@@ -36,18 +36,17 @@ import com.agile.api.IRow;
 import com.agile.api.IStatus;
 import com.agile.api.ITable;
 import com.agile.api.ItemConstants;
-import com.util.LoggerImpl;
+import com.agile.util.CommonUtil;
 
 
 public class UpdateAbsoluteInFile implements ICustomAction {
-//	static org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UpdateAbsoluteInFile.class.getClass());
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateAbsoluteInFile.class);
 
 	
 	public ActionResult doAction(IAgileSession session,INode node,IDataObject dataObject){
 		ActionResult actionResult = new ActionResult();
 		try{
-			//LoggerImpl.initAppLogger(UpdateAbsoluteInFile.class, session);
-			//CommonUtil.initAppLogger(UpdateAbsoluteInFile.class, session);
+			CommonUtil.initAppLogger(UpdateAbsoluteInFile.class, session);
 			InputStream inStream=null;
 			IRow row=null;
 			ICell oldRevisionCell=null;
@@ -62,7 +61,7 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 			String effectiveDate = null;
 		 String sLine = "NOthing";
 			
-		//	logger.debug("Current Status" +ecoStatus);
+			logger.debug("Current Status" +ecoStatus);
 			if(ecoStatus.toString().equals("Implement Review")){
 				ITable affectedItems=eco.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 				Iterator<?> affectedItemsIterator=affectedItems.iterator();
@@ -70,14 +69,14 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 				while(affectedItemsIterator.hasNext()){
 					row = (IRow) affectedItemsIterator.next();
 					part = (IDataObject)row.getReferent();
-		//			logger.debug("Part is :" +part);
+					logger.debug("Part is :" +part);
 					oldRevisionCell=row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_OLD_REV);
 					oldRevision=oldRevisionCell.getValue().toString();
 					effectiveDate = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE).toString();
 					ICell newRevisionCell = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_NEW_REV);
 					String newRevision = newRevisionCell.getValue().toString();
 					
-			//		logger.debug("Old Revision" +oldRevision);
+					logger.debug("Old Revision" +oldRevision);
 				}
 				
 				
@@ -90,41 +89,41 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 				while(changeHistoryIterator.hasNext()){
 					row = (IRow) changeHistoryIterator.next();
 					ecoNumber = row.getReferent();
-			//		logger.debug("ECO Number in Change History Table" + ecoNumber);
+				logger.debug("ECO Number in Change History Table" + ecoNumber);
 					rev=row.getValue(1006).toString();
 					
-				//	logger.debug("Revision is" +rev);	
+					logger.debug("Revision is" +rev);	
 					partRevision.put(ecoNumber, rev);
 					
 					
 					if(rev.equalsIgnoreCase(oldRevision)){
 									
 						
-					//	logger.debug("inside");
+						logger.debug("inside");
 						ITable affectedItemsTable=ecoNumber.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 						Iterator<?> affectedItemsTableIterator=affectedItemsTable.iterator();
 																
 						while(affectedItemsTableIterator.hasNext()){
 							row = (IRow) affectedItemsTableIterator.next();
 							item = row.getReferent();
-					//		logger.debug("Item is :" +item);
+							logger.debug("Item is :" +item);
 							ITable attachmentsTable=item.getTable(ItemConstants.TABLE_ATTACHMENTS);
 							Iterator<?> attachmentsTableIterator=attachmentsTable.iterator();
 							while(attachmentsTableIterator.hasNext()){
 								row = (IRow) attachmentsTableIterator.next();
 								fileFolder = (IFileFolder)row.getReferent();
-						//		logger.debug("File Folder is :" +fileFolder);
+								logger.debug("File Folder is :" +fileFolder);
 								fileName=row.getName();
-						//		logger.debug("File Folder Name is :" +fileName);
+								logger.debug("File Folder Name is :" +fileName);
 
 								if (!((ICheckoutable) row).isCheckedOut()) {
 									// Check out the file
 									((ICheckoutable)row).checkOutEx();
-						//			logger.debug("Folder is Checked out for old");
+									logger.debug("Folder is Checked out for old");
 									inStream= ((IAttachmentFile) row).getFile();
 									try{
 										file=getAttachmentFile(inStream, outStream,fileName,filePath);
-								//		logger.debug("getAttachmentFile method executed successfully for old ");
+									logger.debug("getAttachmentFile method executed successfully for old ");
 									}
 									catch (IOException e) {
 										e.printStackTrace();
@@ -134,12 +133,12 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 									} 
 									finally {	
 										inStream.close();
-							//			logger.debug("Error in closing the Input Stream");
+									logger.debug("Error in closing the Input Stream");
 									}
 									FileInputStream fis1 = new FileInputStream(filePath+fileName);
-							//		logger.debug("FIS " +fis1.toString());
+									logger.debug("FIS " +fis1.toString());
 									XWPFDocument xdoc1=new XWPFDocument(OPCPackage.open(fis1));
-							//		logger.debug("document1" );
+									logger.debug("document1" );
 									
 									//Update Effective Date
 									//CTSectPr sectPr = xdoc1.getDocument().getBody().addNewSectPr();
@@ -156,7 +155,7 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 									  CTText ctHeader1 = ctrHeader1.addNewT(); 
 									  String headerText = "Obsolete"; 
 									  ctHeader1.setStringValue(headerText);
-							//		  logger.debug("String Set"); 
+									  logger.debug("String Set"); 
 									  XWPFParagraph headerParagraph1 = new XWPFParagraph(ctpHeader1, xdoc1); 
 									  XWPFParagraph[] parsHeader1 = new XWPFParagraph[1]; 
 									  parsHeader1[0] = headerParagraph1;
@@ -172,11 +171,11 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 									//Set the new file
 									((IAttachmentFile)row).setFile(new File(outfilePath+fileName));
 									((ICheckoutable) row).checkIn();
-							//		logger.debug("Folder is Checked in");
+									logger.debug("Folder is Checked in");
 									sLine +="Checkedin";
 								}
 								else{
-							//		logger.debug("File Folder is already checked out.Please Cancel Checkout or check in");
+									logger.debug("File Folder is already checked out.Please Cancel Checkout or check in");
 									actionResult = new ActionResult(ActionResult.STRING,"File Folder is already checked out.Please Cancel Checkout or check in" );
 									return actionResult;
 								}
@@ -184,14 +183,14 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 						}
 					}
 					else{
-				//		logger.debug("Revision not found");
+						logger.debug("Revision not found");
 						
 						
 					}
 				}
 			}
 			else{
-			//	logger.debug("ECO status is not in implemeneted Status");
+				logger.debug("ECO status is not in implemeneted Status");
 			//	String sEffectiveDateUpdateResult = sUpdateEffectivityDate(effectiveDate, part);
 				actionResult = new ActionResult(ActionResult.STRING,"ECO status is not in implemeneted Status" );
 				return actionResult;
@@ -202,12 +201,12 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 		catch (APIException e) {
 			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
 			e.printStackTrace();
-	//		logger.error("Creation of Extension failed due to"+e.getMessage());
+		logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
 		catch(Exception e){
 			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
 			e.printStackTrace();
-	//		logger.error("Creation of Extension failed due to"+e.getMessage());
+			logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
 		return actionResult;
 	}
@@ -217,7 +216,7 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 		int read = 0;
 		byte[] bytes = new byte[1024];
 
-	//	logger.debug("InStream data:"+inStream.available());
+		logger.debug("InStream data:"+inStream.available());
 		filePath=filePath+fileName;
 		File targetFile = new File(filePath);
 		outStream = new FileOutputStream(targetFile);
@@ -226,8 +225,8 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 			outStream.write(bytes, 0, read);
 		}
 
-	//	logger.debug("instream.available(): " +inStream.available());
-	//	logger.debug("File Name in method: "+targetFile.getName());
+		logger.debug("instream.available(): " +inStream.available());
+		logger.debug("File Name in method: "+targetFile.getName());
 		outStream.close();
 		return targetFile;
 
