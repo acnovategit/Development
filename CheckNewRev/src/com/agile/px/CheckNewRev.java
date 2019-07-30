@@ -9,7 +9,6 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import org.slf4j.Logger;
 import org.apache.commons.io.FileUtils;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
@@ -28,15 +27,17 @@ import com.agile.api.INode;
 import com.agile.api.IRow;
 import com.agile.api.ITable;
 import com.agile.api.ItemConstants;
+import com.agile.util.CommonUtil;
 
 
 public class CheckNewRev implements ICustomAction {
-	static Logger logger = org.slf4j.LoggerFactory.getLogger(CheckNewRev.class.getClass());
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(CheckNewRev.class);
 
 	public static final String CHECKEDOUT_FILEPATH= "E:\\AgileVault\\" ;
 	public static final String STAGE_FILEPATH = "E:\\AgileVault\\staging\\";
 	Iterator<?> attachmentsTableIterator;
 	public ActionResult doAction(IAgileSession session,INode node,IDataObject dataObject){
+		CommonUtil.initAppLogger(CheckNewRev.class, session);
 		ActionResult actionResult = new ActionResult();
 		try{
 			
