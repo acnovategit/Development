@@ -29,10 +29,11 @@ import com.agile.api.INode;
 import com.agile.api.IRow;
 import com.agile.api.ITable;
 import com.agile.api.ItemConstants;
+import com.agile.util.CommonUtil;
 
 public class CheckNewRev implements ICustomAction {
-	static Logger logger = org.slf4j.LoggerFactory.getLogger(CheckNewRev.class.getClass());
-
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(CheckNewRev.class);
+	
 	public static final String CHECKEDOUT_FILEPATH = "C:\\AgileVault\\";
 	public static final String STAGE_FILEPATH = "C:\\AgileVault\\staging\\";
 	Iterator<?> attachmentsTableIterator;
@@ -42,6 +43,7 @@ public class CheckNewRev implements ICustomAction {
 	int i = 1,flag=0;
 
 	public ActionResult doAction(IAgileSession session, INode node, IDataObject dataObject) {
+		CommonUtil.initAppLogger(CheckNewRev.class, session);
 		ActionResult actionResult = new ActionResult();
 		try {
 
