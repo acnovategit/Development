@@ -37,19 +37,20 @@ import com.agile.api.IStatus;
 import com.agile.api.ITable;
 import com.agile.api.ItemConstants;
 import com.agile.util.CommonUtil;
+
 import com.util.LoggerImpl;
 
 
 public class UpdateAbsoluteInFile implements ICustomAction {
-	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateAbsoluteInFile.class);
+//	static org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UpdateAbsoluteInFile.class.getClass());
 
-	
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateAbsoluteInFile.class);
 	public ActionResult doAction(IAgileSession session,INode node,IDataObject dataObject){
-		CommonUtil.initAppLogger(UpdateAbsoluteInFile.class, session);
 		ActionResult actionResult = new ActionResult();
 		try{
 			//LoggerImpl.initAppLogger(UpdateAbsoluteInFile.class, session);
 			//CommonUtil.initAppLogger(UpdateAbsoluteInFile.class, session);
+			CommonUtil.initAppLogger(UpdateAbsoluteInFile.class, session);
 			InputStream inStream=null;
 			IRow row=null;
 			ICell oldRevisionCell=null;
@@ -62,27 +63,27 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 			IChange eco=(IChange)dataObject;
 			IStatus ecoStatus=eco.getStatus();
 			String effectiveDate = null;
+			XWPFHeaderFooterPolicy policy;
 		 String sLine = "NOthing";
 			
-			logger.debug("Current Status" +ecoStatus);
-			if(ecoStatus.toString().equals("Implement Review")){
+		//	logger.debug("Current Status" +ecoStatus);
+			if(ecoStatus.toString().equals("Implement-Review")){
 				ITable affectedItems=eco.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 				Iterator<?> affectedItemsIterator=affectedItems.iterator();
 				
 				while(affectedItemsIterator.hasNext()){
 					row = (IRow) affectedItemsIterator.next();
 					part = (IDataObject)row.getReferent();
-				logger.debug("Part is :" +part);
-					oldRevisionCell=row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_OLD_REV);
-					oldRevision=oldRevisionCell.getValue().toString();
-					effectiveDate = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE).toString();
-					ICell newRevisionCell = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_NEW_REV);
-					String newRevision = newRevisionCell.getValue().toString();
+		//			logger.debug("Part is :" +part);
+					//oldRevisionCell=row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_OLD_REV);
+					//oldRevision=oldRevisionCell.getValue().toString();
+					//effectiveDate = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE).toString();
+					//ICell newRevisionCell = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_NEW_REV);
+					//String newRevision = newRevisionCell.getValue().toString();
 					
-					logger.debug("Old Revision" +oldRevision);
-				}
+			//		logger.debug("Old Revision" +oldRevision);
 				
-				
+							
 				//Update Absolute
 				HashMap<IDataObject, String> partRevision=new HashMap<>();
 				ITable changeHistoryTable=part.getTable(ItemConstants.TABLE_CHANGEHISTORY);
@@ -92,32 +93,30 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 				while(changeHistoryIterator.hasNext()){
 					row = (IRow) changeHistoryIterator.next();
 					ecoNumber = row.getReferent();
-					logger.debug("ECO Number in Change History Table" + ecoNumber);
+			//		logger.debug("ECO Number in Change History Table" + ecoNumber);
 					rev=row.getValue(1006).toString();
-					
-					logger.debug("Revision is" +rev);	
+					//	logger.debug("Revision is" +rev);	
 					partRevision.put(ecoNumber, rev);
-					
-					
-					if(rev.equalsIgnoreCase(oldRevision)){
+									
+				//	if(rev.equalsIgnoreCase(oldRevision)){
 									
 						
-						logger.debug("inside");
+					//	logger.debug("inside");
 						ITable affectedItemsTable=ecoNumber.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 						Iterator<?> affectedItemsTableIterator=affectedItemsTable.iterator();
 																
 						while(affectedItemsTableIterator.hasNext()){
 							row = (IRow) affectedItemsTableIterator.next();
 							item = row.getReferent();
-							logger.debug("Item is :" +item);
+					//		logger.debug("Item is :" +item);
 							ITable attachmentsTable=item.getTable(ItemConstants.TABLE_ATTACHMENTS);
 							Iterator<?> attachmentsTableIterator=attachmentsTable.iterator();
 							while(attachmentsTableIterator.hasNext()){
 								row = (IRow) attachmentsTableIterator.next();
 								fileFolder = (IFileFolder)row.getReferent();
-								logger.debug("File Folder is :" +fileFolder);
+						//		logger.debug("File Folder is :" +fileFolder);
 								fileName=row.getName();
-								logger.debug("File Folder Name is :" +fileName);
+						//		logger.debug("File Folder Name is :" +fileName);
 
 								if (!((ICheckoutable) row).isCheckedOut()) {
 									// Check out the file
@@ -139,77 +138,87 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 										logger.debug("Error in closing the Input Stream");
 									}
 									FileInputStream fis1 = new FileInputStream(filePath+fileName);
-									logger.debug("FIS " +fis1.toString());
+									//logger.debug("FIS " +fis1.toString());
 									XWPFDocument xdoc1=new XWPFDocument(OPCPackage.open(fis1));
-									logger.debug("document1" );
+								    logger.debug("XWPF document created from FIS" );
 									
-									//Update Effective Date
-									//CTSectPr sectPr = xdoc1.getDocument().getBody().addNewSectPr();
-									XWPFHeaderFooterPolicy policy = new XWPFHeaderFooterPolicy(xdoc1);
-								   
+									policy =  xdoc1.getHeaderFooterPolicy();// new XWPFHeaderFooterPolicy(xdoc1);
+								    logger.info(policy.toString());
 									
-									policy.createWatermark("Obsolete1");
-								    sLine ="Watermark" +fis1.toString();
+									if (policy == null)
+								   {
+									   logger.debug("Policy is null");
+									   policy =  new XWPFHeaderFooterPolicy(xdoc1);
+									   									   
+								   }
+									
+									
+									String sWatermark = "Obsolete";
+									policy.createWatermark(sWatermark);
+								
+									logger.info("Watermark created" + sWatermark);
+								  //  sLine ="Watermark" +fis1.toString();
 
 									//write header content
 									
-									  CTP ctpHeader1 = CTP.Factory.newInstance(); 
+									/*  CTP ctpHeader1 = CTP.Factory.newInstance(); 
 									  CTR ctrHeader1 = ctpHeader1.addNewR(); 
 									  CTText ctHeader1 = ctrHeader1.addNewT(); 
-									  String headerText = "Obsolete"; 
-									  ctHeader1.setStringValue(headerText);
-									  logger.debug("String Set"); 
+									  //String headerText = "Obsolete"; 
+									  //ctHeader1.setStringValue(headerText);
+							//		  logger.debug("String Set"); 
 									  XWPFParagraph headerParagraph1 = new XWPFParagraph(ctpHeader1, xdoc1); 
 									  XWPFParagraph[] parsHeader1 = new XWPFParagraph[1]; 
 									  parsHeader1[0] = headerParagraph1;
 									  policy.createHeader(XWPFHeaderFooterPolicy.DEFAULT, parsHeader1);
-									 
-									 
-									
+									  policy.createHeader(XWPFHeaderFooterPolicy.EVEN, parsHeader1);
+									  policy.createHeader(XWPFHeaderFooterPolicy.FIRST, parsHeader1);*/
+																		
 								     OutputStream os1 = new FileOutputStream(new File(outfilePath+fileName));
-									
-								     xdoc1.write(os1);    
+									 xdoc1.write(os1);    
 									 
 									
 									//Set the new file
 									((IAttachmentFile)row).setFile(new File(outfilePath+fileName));
 									((ICheckoutable) row).checkIn();
-									logger.debug("Folder is Checked in");
-									sLine +="Checkedin";
+							        logger.debug("Folder is Checked in");
+									
 								}
 								else{
-									logger.debug("File Folder is already checked out.Please Cancel Checkout or check in");
+							//		logger.debug("File Folder is already checked out.Please Cancel Checkout or check in");
 									actionResult = new ActionResult(ActionResult.STRING,"File Folder is already checked out.Please Cancel Checkout or check in" );
 									return actionResult;
 								}
 							}
 						}
-					}
+					/*}
 					else{
-						logger.debug("Revision not found");
+				//		logger.debug("Revision not found");
 						
 						
-					}
+					}*/
 				}
+				
+			}
 			}
 			else{
-				logger.debug("ECO status is not in implemeneted Status");
+			//	logger.debug("ECO status is not in implemeneted Status");
 			//	String sEffectiveDateUpdateResult = sUpdateEffectivityDate(effectiveDate, part);
 				actionResult = new ActionResult(ActionResult.STRING,"ECO status is not in implemeneted Status" );
 				return actionResult;
 			}
 			//String sEffectiveDateUpdateResult = sUpdateEffectivityDate(effectiveDate, part);
-			actionResult = new ActionResult(ActionResult.STRING,"Attachment of Previous revision updated with Obsolete Watermark"+ sLine);
+			actionResult = new ActionResult(ActionResult.STRING,"Attachment of Previous revision updated with Obsolete Watermark");
 		}
 		catch (APIException e) {
 			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
 			e.printStackTrace();
-		logger.error("Creation of Extension failed due to"+e.getMessage());
+	//		logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
 		catch(Exception e){
 			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
 			e.printStackTrace();
-			logger.error("Creation of Extension failed due to"+e.getMessage());
+	//		logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
 		return actionResult;
 	}
@@ -219,7 +228,7 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 		int read = 0;
 		byte[] bytes = new byte[1024];
 
-		logger.debug("InStream data:"+inStream.available());
+	//	logger.debug("InStream data:"+inStream.available());
 		filePath=filePath+fileName;
 		File targetFile = new File(filePath);
 		outStream = new FileOutputStream(targetFile);
@@ -228,8 +237,8 @@ public class UpdateAbsoluteInFile implements ICustomAction {
 			outStream.write(bytes, 0, read);
 		}
 
-		logger.debug("instream.available(): " +inStream.available());
-		logger.debug("File Name in method: "+targetFile.getName());
+	//	logger.debug("instream.available(): " +inStream.available());
+	//	logger.debug("File Name in method: "+targetFile.getName());
 		outStream.close();
 		return targetFile;
 

@@ -6,6 +6,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -36,81 +38,83 @@ import com.agile.api.ItemConstants;
 import com.agile.util.CommonUtil;
 
 
-public class UpdateEffectivityDate implements ICustomAction {
-	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateEffectivityDate.class);
 
+public class UpdateEffectivityDate implements ICustomAction {
+	
+
+	//static org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UpdateEffectivityDate.class.getClass());
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateEffectivityDate.class);
 	public ActionResult doAction(IAgileSession session,INode node,IDataObject dataObject){
-		CommonUtil.initAppLogger(UpdateEffectivityDate.class, session);
 		ActionResult actionResult = new ActionResult();
-		String sLine = "Started";
+		//String sLine = "Started";
 		try{
-		//	CommonUtil.initAppLogger(UpdateEffectivityDate.class, session);
+			CommonUtil.initAppLogger(UpdateEffectivityDate.class, session);
 			// String log4jConfPath = "log4j.properties";
 	    	// PropertyConfigurator.configure(log4jConfPath);
 			
 			InputStream inStream=null;
 			IRow row=null;
 			ICell oldRevisionCell=null;
-			String fileName="",filePath="/ora01/APP/agilevault/",oldRevision="",oldEffectiveDate="",effectiveDate="";
+			String fileName="",filePath="/ora01/APP/agilevault/",oldEffectiveDate="",effectiveDate="";
 			IDataObject part=null;
 			IFileFolder fileFolder=null;
 			OutputStream outStream=null;
 			File file=null;
 			IChange eco=(IChange)dataObject;
 			IStatus ecoStatus=eco.getStatus();
+			String oldRevision="";
 			logger.debug("Current Status" +ecoStatus);
 			
 			//String headerData = null;
-			if(ecoStatus.toString().equals("Implement Review")){
+			if(ecoStatus.toString().equals("Implement-Review")){
 				
 								
 				ITable affectedItems=eco.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
-				logger.info("Before iterotor");
+			//	logger.info("Before iterotor");
 				Iterator<?> affectedItemsIterator;
 				affectedItemsIterator=affectedItems.iterator();		
 					
-					sLine += " Before looping affected items";		 
+				//	sLine += " Before looping affected items";		 
 				while(affectedItemsIterator.hasNext()){
 							
 					row = (IRow) affectedItemsIterator.next();
 					part = row.getReferent();
 					logger.debug("Part is :" +part);
-					effectiveDate=row.getValue(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE).toString();
+					effectiveDate= now();//row.getValue(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE).toString();
 				
 					logger.debug("Effective Date" +effectiveDate);
-					oldRevisionCell=row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_OLD_REV);
-					oldRevision=oldRevisionCell.getValue().toString();
-					logger.debug("Old Revision" +oldRevision);
-				}
+					
 				//Iterate Attachments Table
 				ITable attachments=part.getTable(ItemConstants.TABLE_ATTACHMENTS);
 				Iterator<?> attachmentsIterator=attachments.iterator();
 				
-				sLine += "Before looping attachments";
+				//sLine += "Before looping attachments";
 				while(attachmentsIterator.hasNext()){
 					row = (IRow) attachmentsIterator.next();
 					fileFolder = (IFileFolder)row.getReferent();
-					logger.debug("File Folder is :" +fileFolder);
+				//	logger.debug("File Folder is :" +fileFolder);
 					fileName=row.getName();
 					logger.debug("File Folder Name is :" +fileName);
 
 					if (!((ICheckoutable) row).isCheckedOut()) {
 						// Check out the file
 						((ICheckoutable)row).checkOutEx();
-						logger.debug("Folder is Checked out");
+				//		logger.debug("Folder is Checked out");
 						inStream= ((IAttachmentFile) row).getFile();
 						try{
 							file=getAttachmentFile(inStream, outStream,fileName,filePath);
-						logger.debug("getAttachmentFile method executed successfully");
+				//			logger.debug("getAttachmentFile method executed successfully");
 						}
 						catch (IOException e) {
 							e.printStackTrace();
-							actionResult = new ActionResult(ActionResult.STRING,"IO Exception"+ e.getMessage()+ sLine);
+							actionResult = new ActionResult(ActionResult.EXCEPTION,"IO Exception"+ e.getMessage());
+							logger.error(e.getMessage());
 							return actionResult;
 						}
 						catch (Exception e) {
 							e.printStackTrace();
-							actionResult = new ActionResult(ActionResult.STRING,"General Exception"+ e.getMessage()+ sLine);
+							actionResult = new ActionResult(ActionResult.EXCEPTION,"General Exception"+ e.getMessage());
+							logger.error(e.getMessage());
 							return actionResult;
 							
 						} 
@@ -119,58 +123,60 @@ public class UpdateEffectivityDate implements ICustomAction {
 							
 						}
 						FileInputStream fis = new FileInputStream(filePath+fileName);
-						logger.debug("FIS " +fis.toString());
+					
 						XWPFDocument xdoc=new XWPFDocument(OPCPackage.open(fis));
 						XWPFHeaderFooterPolicy policy = new XWPFHeaderFooterPolicy(xdoc);
 						//read header
 						XWPFHeader header = policy.getDefaultHeader();
 					     String headerData=header.getText().toString();
-						logger.debug("Header data in String" +headerData);
-                        sLine += "Got header data";  
+		 
 						Map<String, String> map = new HashMap<String, String>();
 						String[] headerDataSplit = headerData.split("\n");
 						for (String s : headerDataSplit) {
 							if(s.contains("Effective Date")){
 								String[] t = s.split(":");
 								oldEffectiveDate=t[1];
-							logger.debug("OldEffective date"+oldEffectiveDate);
-								sLine = "Found effectivedate" +oldEffectiveDate + " New EffectiveDate:" +effectiveDate  ;
+								logger.debug("OldEffective date"+oldEffectiveDate);
+						
 							}
 						}
 						oldEffectiveDate = oldEffectiveDate.trim();
+					
 						effectiveDate = effectiveDate.trim();
-						effectiveDate = "Effective Date:" + effectiveDate;
+						//effectiveDate = "Effective Date:" + effectiveDate;
+						logger.debug("New Effective Date:"+effectiveDate);
 						xdoc=setHeader(xdoc, oldEffectiveDate, effectiveDate);
-						logger.debug("File path:" + filePath+fileName);
+				
 						OutputStream os = new FileOutputStream(new File(filePath+fileName));
 						xdoc.write(os);
 						//Set the new file
 						((IAttachmentFile)row).setFile(new File(filePath+fileName));
 						((ICheckoutable) row).checkIn();
-					      sLine += " Folder is Checked in" +effectiveDate;
-						break;
+					     logger.info("File checked in");
+						//break;
 					}
 					else{
 						logger.debug("File Folder is already checked out.Please Cancel Checkout or check in");
-						actionResult = new ActionResult(ActionResult.STRING,"File Folder is already checked out.Please Cancel Checkout or check in");
+						actionResult = new ActionResult(ActionResult.EXCEPTION,"File Folder is already checked out.Please Cancel Checkout or check in");
 						return actionResult;
 					}
 				}
+				}
 			}
 			else{
-			logger.debug("ECO status is not in implemeneted Status");
-				actionResult = new ActionResult(ActionResult.STRING,"ECO status is not in implemeneted Status");
+				logger.debug("ECO status is not in implemenet-review Status");
+				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception("Current ECO status is "+ecoStatus.toString()+ " Please move the AWF to Implement-Review Status"));
 				return actionResult;
 			}
-			actionResult = new ActionResult(ActionResult.STRING,"Effective Date Updated"+sLine);
+			actionResult = new ActionResult(ActionResult.STRING,"Effective Date Updated and set to:"+effectiveDate);
 		}
 		catch (APIException e) {
-			actionResult = new ActionResult(ActionResult.STRING, "API Exception:"+e.getErrorCode()+ sLine);
+			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception("API Exception:"+e.getErrorCode()));
 			e.printStackTrace();
 			logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
 		catch(Exception e){
-			actionResult = new ActionResult(ActionResult.STRING, "General Exception"+e.getMessage()+sLine);
+			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception("General Exception"+e.getMessage()));
 			e.printStackTrace();
 			logger.error("Creation of Extension failed due to"+e.getMessage());
 		}
@@ -182,7 +188,7 @@ public class UpdateEffectivityDate implements ICustomAction {
 		int read = 0;
 		byte[] bytes = new byte[1024];
 
-		logger.debug("InStream data:"+inStream.available());
+
 		filePath=filePath+fileName;
 		File targetFile = new File(filePath);
 		outStream = new FileOutputStream(targetFile);
@@ -191,8 +197,6 @@ public class UpdateEffectivityDate implements ICustomAction {
 			outStream.write(bytes, 0, read);
 		}
 
-		logger.debug("instream.available(): " +inStream.available());
-		logger.debug("File Name in method: "+targetFile.getName());
 		outStream.close();
 		return targetFile;
 	}
@@ -209,15 +213,29 @@ public class UpdateEffectivityDate implements ICustomAction {
 			List<XWPFRun> runs = xwpfParagraph.getRuns();
 			for (XWPFRun run : runs) {
 				String runText = run.getText(run.getTextPosition());
-				logger.debug("inside for");
+		//		logger.debug("inside for");
 				if(placeHolder !="" && !placeHolder.isEmpty()){
 					if(runText != null &&
 							Pattern.compile(placeHolder, Pattern.CASE_INSENSITIVE).matcher(runText).find()){
-						runText = replaceText;
+						runText = "Effective Date:"+ replaceText;
 					}
 				}
 				run.setText(runText, 0);
 			}
 		}
 	}
+
+
+	
+	
+
+	public String now() {
+		String DATE_FORMAT_NOW = "MM/dd/yyyy";
+	Calendar cal = Calendar.getInstance();
+	SimpleDateFormat sdf = new SimpleDateFormat(DATE_FORMAT_NOW);
+	return sdf.format(cal.getTime());
+	}
+
+
+
 }
