@@ -1,4 +1,4 @@
-package com.agile.px;
+package com.cepheid.awf;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -8,14 +8,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFHeader;
-import org.slf4j.Logger;
-
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
 import com.agile.api.IAgileSession;
@@ -29,32 +26,40 @@ import com.agile.api.INode;
 import com.agile.api.IRow;
 import com.agile.api.ITable;
 import com.agile.api.ItemConstants;
+import com.agile.px.ActionResult;
+import com.agile.px.EventActionResult;
+import com.agile.px.IEventAction;
+import com.agile.px.IEventInfo;
+import com.agile.px.IObjectEventInfo;
+import com.agile.util.CommonUtil;
 
-public class CheckNewRev implements ICustomAction {
-	static Logger logger = org.slf4j.LoggerFactory.getLogger(CheckNewRev.class.getClass());
+public class CheckNewRev implements IEventAction {
+//	static Logger logger = org.slf4j.LoggerFactory.getLogger(CheckNewRev.class.getClass());
+	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(CheckNewRev.class);
 
-	public static final String CHECKEDOUT_FILEPATH = "C:\\AgileVault\\";
-	public static final String STAGE_FILEPATH = "C:\\AgileVault\\staging\\";
+	public static final String CHECKEDOUT_FILEPATH = "/ora01/APP/agilevault/";
+	public static final String STAGE_FILEPATH = "/ora01/APP/agilevault/staging";
 	Iterator<?> attachmentsTableIterator;
 	ArrayList<String> fileNameList = new ArrayList<String>();
 	String concatenatedMessages = "";
 	String msg = "";
 	int i = 1,flag=0;
 
-	public ActionResult doAction(IAgileSession session, INode node, IDataObject dataObject) {
+	public EventActionResult doAction(IAgileSession session, INode node, IEventInfo eventinfo) {
+		
+		CommonUtil.initAppLogger(CheckNewRev.class, session);
 		ActionResult actionResult = new ActionResult();
 		try {
-
 			InputStream inStream = null;
 			IRow row = null;
-
 			String fileName = "";
 			IItem part = null;
 			ICell newRev = null;
 			IFileFolder fileFolder = null;
-
 			File file = null;
-			IChange eco = (IChange) dataObject;
+
+			IObjectEventInfo info = (IObjectEventInfo) eventinfo;
+			IChange eco = (IChange) info.getDataObject();
 			ITable affectedItems = eco.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 
 			Iterator<?> itAffectedItemsIterator = affectedItems.iterator();
@@ -84,43 +89,32 @@ public class CheckNewRev implements ICustomAction {
 						file = new File(sFilePath);
 						FileUtils.copyInputStreamToFile(inStream, file);
 						logger.info("File is copied from InputStream");
-						/*
-						 * String[] name = file.getName().split(" "); if
-						 * (!(part.toString().equals(name[0]))) { msg =
-						 * "Part Number " + part.toString() +
-						 * " does not matches with Attachment Name " +
-						 * file.getName(); fileNameList.add(msg); } else
-						 */
 						fileNameList.add(checkRevisionForEach(file, newRev, part));
 						logger.info("function Execution ends for each document of " + part);
 
 					} catch (IOException e) {
 						e.printStackTrace();
-						actionResult = new ActionResult(ActionResult.STRING,
-								"IO Exception:" + e.getMessage().toString());
+						logger.error(e.getMessage());
+						actionResult = new ActionResult(ActionResult.EXCEPTION,e);
+					
+						
 					} catch (Exception e) {
-						actionResult = new ActionResult(ActionResult.STRING, "Exception:" + e.getMessage().toString());
 						e.printStackTrace();
-					} finally {
-						try {
-							inStream.close();
-						} catch (IOException e) {
-
-							e.printStackTrace();
-							logger.error("Closing of Instream failed " + e.getMessage());
-						}
-
-					}
+						logger.error(e.getMessage());
+						actionResult = new ActionResult(ActionResult.EXCEPTION, e);
+						
+					} 
 				} // end of while attachmentsTableIterator
 			} // end of while itAffectedItemsIterator
 
 		} catch (APIException e) {
-			actionResult = new ActionResult(ActionResult.STRING, "APIException: " + e.getErrorCode().toString());
+			actionResult = new ActionResult(ActionResult.EXCEPTION, e);
 			e.printStackTrace();
 			logger.error("Creation of Extension failed due to" + e.getMessage());
 		}
 		
 		Iterator<String> itr = fileNameList.iterator();
+		logger.info("filenamelist retrieved-------");
 		while (itr.hasNext()) {
 			if(itr.next()!="")
 			{
@@ -129,6 +123,9 @@ public class CheckNewRev implements ICustomAction {
 			}
 			
 		}
+		try{
+			
+		
 		if(flag==1)
 		{
 			for(i=0;i<fileNameList.size();){
@@ -140,14 +137,25 @@ public class CheckNewRev implements ICustomAction {
 			}
 				i++;
 			}
-			actionResult = new ActionResult(ActionResult.STRING, concatenatedMessages);
+			logger.info(concatenatedMessages);
+			
+			Exception e = new Exception(concatenatedMessages);
+		    throw e;
+			
 			
 		}
 		else
 		{
-			actionResult = new ActionResult(ActionResult.STRING, "Revision Matches for all the Attachments");
+			actionResult = new ActionResult(ActionResult.STRING, "Part/ Document Revision Matches for all the Attachments");
 		}
-		return actionResult;
+		
+		}
+		catch (Exception e)
+		{
+			actionResult = new ActionResult(ActionResult.EXCEPTION, e);
+		}
+		logger.info("actionresult is: "+actionResult.toString());
+		return new EventActionResult(eventinfo,actionResult);
 	}
 
 	public String checkRevisionForEach(File file, ICell newRev, IItem part) {
@@ -180,25 +188,27 @@ public class CheckNewRev implements ICustomAction {
 			}
 			// validate Document Number with Part Number
 			val=map.get("Document Number").trim();
-			if (val.equals(part.toString())) {
+			if (val.equals(part.getName())) {
 				logger.info("Document Number Matches for "+file.getName());
-				
-				//validate revision
-				val=map.get("Rev").trim();
-				if (val.equals(newRev.toString())) {
-					
-					
-					logger.info("Revision Matches with attachment "+file.getName());
-				} else {
-					
-					message = "Revision does not matches with document " + file.getName();
-				}
 			}
 			else
 			{
-				
-			message="Part Number "+part.toString()+" not Matching with document number "+val+" for "+file.getName();
+			
+			message="Part/Document Number "+part.getName()+" not Matching with document number "+val+" mentioned in the header of attachment "+file.getName()+"\n";
+			logger.info(message);
 			}
+				//validate revision
+			val=map.get("Rev").trim();
+			if (val.equals(newRev.toString())) {
+										
+			logger.info("Revision Matches with attachment "+file.getName());
+			} 
+			else 
+			{
+			message += "Revision for item "+part.getName()+" do not match with that mentioned in the header of its attachment " + file.getName() + "\n";
+			logger.info(message);
+			}
+			
 		}
 
 		catch (Exception e) {
