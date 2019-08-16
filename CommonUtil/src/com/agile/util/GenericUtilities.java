@@ -18,56 +18,48 @@ import com.agile.api.IDataObject;
 import com.agile.api.IListLibrary;
 
 /**
- * 
- * @author Supriya Varada
- * This file contains all reusable methods which are used across all PXs
+ * This file contains generic methods which are used across all PXs
  *
  */
-public class CommonUtil {
 
-	public static Logger logger = Logger.getLogger(CommonUtil.class.getName());
+public class GenericUtilities {
+
+	public static Logger logger = Logger.getLogger(GenericUtilities.class.getName());
 	public static String genericMessagesListName = "GenericMessagesList";
 	static HashMap<Object, Object> genericMessagesList = new HashMap<Object, Object>();
 
 	/**
-	 * Method to initiate the logger
+	 * This method initializes the logger
 	 * 
-	 * @param objClassName
-	 * @param strFileName  Initialize Logger
-	 * @throws APIException
+	 * @param session
 	 */
-	@SuppressWarnings("unused")
-	public static void initAppLogger(Class objClassName, IAgileSession session) {
+	public static void initializeLogger(IAgileSession session) {
 
 		String path = null;
 		try {
-			genericMessagesList = CommonUtil.loadListValues(session, genericMessagesListName);
-			// DO NOT GIVE SPACE BETWEEN PATH AND =/= AND VALUE
+			genericMessagesList = getAgileListValues(session, genericMessagesListName);
 			path = genericMessagesList.get("LOG4J_PROP_FILEPATH").toString();
-		} catch (APIException e) {
-			logger.error("Exception in loggerutil" + e);
-		}
 
-		File log4jFile = new File(path);
-		Properties objProperties = null;
-		FileInputStream fileInputStream = null;
-		try {
-			objProperties = new Properties();
-			fileInputStream = new FileInputStream(log4jFile);
+			File file = new File(path);
+			Properties properties = null;
+			FileInputStream fileInputStream = null;
+
+			properties = new Properties();
+			fileInputStream = new FileInputStream(file);
 
 			if (fileInputStream != null) {
-				objProperties.load(fileInputStream);
-				PropertyConfigurator.configure(objProperties);
-			} else {
-				logger.info("Could not find the Configuration file for Log4j");
+				properties.load(fileInputStream);
+				PropertyConfigurator.configure(properties);
 			}
+		} catch (APIException e) {
+			logger.error("Failed due to exception while initializing logger" + e);
 		} catch (IOException ioEx) {
-			logger.info("Exception in loggerutil" + ioEx);
+			logger.info("Failed due to exception while initializing logger" + ioEx);
 		}
 	}
 
 	/**
-	 * This method returns the list Value of a single list
+	 * This method returns the Value of a single list attribute in Agile
 	 * 
 	 * @param dataObject
 	 * @param attrID
@@ -75,76 +67,134 @@ public class CommonUtil {
 	 * @throws NumberFormatException
 	 * @throws APIException
 	 */
-	public static String getSingleListValue(IDataObject dataObject, String attrID)
+	public static String getSingleListAttributeValue(IDataObject dataObject, String attrID)
 			throws NumberFormatException, APIException {
 		ICell cell = dataObject.getCell(Integer.parseInt(attrID));
-		IAgileList list = (IAgileList) cell.getValue();
+		IAgileList agileList = (IAgileList) cell.getValue();
 		String cellValue = null;
-		IAgileList[] arrayList = list.getSelection();
-		if (arrayList != null && arrayList.length > 0) {
-			cellValue = (arrayList[0].getValue()).toString();
+		IAgileList[] listValues = agileList.getSelection();
+		if (listValues != null && listValues.length > 0) {
+			cellValue = (listValues[0].getValue()).toString();
 			logger.debug("Cell Value is" + cellValue);
 		}
 		return cellValue;
 	}
 
 	/**
-	 * Load the Agile List values in HashMap
+	 * This method returns the values of a agile list in HashMap
 	 * 
 	 * @param session
 	 * @param listName
 	 * @return
 	 * @throws APIException
 	 */
-	public static HashMap<Object, Object> loadListValues(IAgileSession session, String listName) throws APIException {
-		HashMap<Object, Object> objHashMap = new HashMap<>();
-		logger.debug("Session:" + session);
-		logger.debug("Listname is" + listName);
+	public static HashMap<Object, Object> getAgileListValues(IAgileSession session, String listName)
+			throws APIException {
+		HashMap<Object, Object> map = new HashMap<>();
 
 		IAdmin admin = session.getAdminInstance();
-		logger.debug("admin is" + admin);
 		IListLibrary listLibrary = admin.getListLibrary();
-		logger.debug("listLibrary is" + listLibrary);
-		IAdminList myList = listLibrary.getAdminList(listName);
-		logger.debug("myList is" + myList);
-		IAgileList listValues = myList.getValues();
-		logger.debug("listValues is" + listValues);
-		Object[] obj = listValues.getChildren();
-		logger.debug("obj is" + obj);
-		for (int i = 0; i < obj.length; i++) {
-			IAgileList list2 = (IAgileList) listValues.getChildNode(obj[i]);
-			if (!list2.isObsolete())
-				objHashMap.put(list2.getAPIName(), list2.getValue());
+		IAdminList adminList = listLibrary.getAdminList(listName);
+		IAgileList agileList = adminList.getValues();
+
+		Object[] children = agileList.getChildNodes().toArray();
+		for (int i = 0; i < children.length; i++) {
+			IAgileList listValue = (IAgileList) agileList.getChildNode(children[i]);
+			if (!listValue.isObsolete())
+				map.put(listValue.getAPIName(), listValue.getValue());
 		}
-		logger.debug("objHashMap:" + objHashMap);
-		return objHashMap;
+		logger.debug("List Values in a Map are:" + map);
+		return map;
 	}
-	
+
 	/**
-	 * This method returns the list Values of a Multi list
+	 * This method returns values of a multilist attribute in Agile
+	 * 
 	 * @param dataObject
 	 * @param attrID
 	 * @return
 	 * @throws NumberFormatException
 	 * @throws APIException
 	 */
-	public static ArrayList<String> getMultiListValues(IDataObject dataObject,String attrID) throws NumberFormatException, APIException
-	{
-		ArrayList<String> multiListValues = new ArrayList<String>();
+	public static ArrayList<String> getMultiListAttributeValue(IDataObject dataObject, String attrID)
+			throws NumberFormatException, APIException {
+
+		ArrayList<String> multiListAttributeValues = new ArrayList<String>();
 		ICell cell = dataObject.getCell(Integer.parseInt(attrID));
-		IAgileList list = (IAgileList) cell.getValue();
-		String strlistValues = list.toString();
-		if(!strlistValues.equals("") && !strlistValues.equals(null))
-		{
-			Object[] listArray = strlistValues.split(";");
+		IAgileList agileList = (IAgileList) cell.getValue();
+		String listValues = agileList.toString();
+		if (!listValues.equals("") && !listValues.isEmpty()) {
+			Object[] objectArray = listValues.split(";");
 			String listValue = null;
-			for(int i=0;i<listArray.length;i++)
-			{
-				listValue = listArray[i].toString();
-				multiListValues.add(listValue);						
+			for (int i = 0; i < objectArray.length; i++) {
+				listValue = objectArray[i].toString();
+				multiListAttributeValues.add(listValue);
 			}
 		}
-		return multiListValues;
+		logger.debug("MultiList Attribute Values are:"+multiListAttributeValues);
+		return multiListAttributeValues;
 	}
 
+	/**
+	 * This method returns the Impact assessment attribute Values
+	 * 
+	 * @param dataObject
+	 * @param attributeIdsList
+	 * @return
+	 * @throws NumberFormatException
+	 * @throws APIException
+	 */
+	public static HashMap<Object, Object> getIAAttributeValues(IDataObject dataObject,
+			HashMap<Object, Object> attributeIdsList) throws NumberFormatException, APIException {
+		HashMap<Object, Object> attributeValues = new HashMap<Object, Object>();
+		String attributeValue = "";
+
+		for (Object key : attributeIdsList.keySet()) {
+			if (attributeIdsList.get(key) != null) {
+
+				attributeValue = getSingleListAttributeValue(dataObject, attributeIdsList.get(key).toString());
+				attributeValues.put(attributeIdsList.get(key), attributeValue);
+			}
+		}
+		logger.debug("Impact Assessment atrribute values are:" + attributeValues);
+
+		return attributeValues;
+	}
+
+	/**
+	 * This method returns the number of impact assessment attribute values which
+	 * are marked as Yes or the number of assessment attributes which are null based
+	 * on the parameter passed.
+	 * 
+	 * @param parameter
+	 * @param attributeValues
+	 * @return
+	 * @throws APIException
+	 */
+	public static int getCountOfIAAttributes(String parameter, HashMap<Object, Object> attributeValues,
+			IAgileSession session) throws APIException {
+
+		genericMessagesList = getAgileListValues(session, genericMessagesListName);
+		String value = null;
+		int count = 0;
+
+		for (Object key : attributeValues.keySet()) {
+			value = (String) attributeValues.get(key);
+			if (parameter.equalsIgnoreCase(genericMessagesList.get("NULL").toString())) {
+				if (value == null || value.equals("")) {
+					count++;
+				}
+			} else if (parameter.equalsIgnoreCase(genericMessagesList.get("YES").toString())) {
+				if (value != null && value.equalsIgnoreCase(genericMessagesList.get("YES").toString())) {
+					count++;
+				}
+			} else {
+				logger.debug("Invalid Parameter");
+			}
+
+		}
+
+		logger.debug("Count of " + parameter + " Values:" + count);
+		return count;
+	}
 }
