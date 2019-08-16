@@ -16,14 +16,15 @@ import com.agile.api.IChange;
 import com.agile.api.IDataObject;
 import com.agile.api.INode;
 import com.agile.api.ITable;
-import com.agile.util.CommonUtil;
+import com.agile.util.GenericUtilities;
 
 /**
  * 
- * @author Supriya Varada
- * This PX displays a exception message to user if any Impact assessment attributes are not filled on eCR before generating AWF.
- * If all Impact assessment attributes are filled,AWF is created and added to relationship tab of eCR.
- * All Impact assessment attribute values are copied from ECR to AWF. 
+ * @author Supriya 
+ * This PX displays a message to user if any Impact assessment attributes are not filled on eCR before generating AWF. 
+ * If all Impact assessment attributes are filled,AWF is created and added to relationship tab of eCR. 
+ * All Impact assessment attribute values,Description are copied from ECR to AWF.
+ * AWFWorkflow is set on Workflow attribute of AWF
  *
  */
 
@@ -34,62 +35,50 @@ public class GenerateAWFFromECR implements ICustomAction {
 	public static String attributesMappingOnECRAndAWFListName = "ECRAWFAttributeIDsMappingList";
 	public static String awfMessagesListName = "AWFMessagesList";
 	public static String ecrMessagesListName = "ECRMessagesList";
+	public static String genericMessagesListName = "GenericMessagesList";
 
 	@Override
 	public ActionResult doAction(IAgileSession session, INode arg1, IDataObject dataObject) {
 
 		ActionResult actionResult = null;
 		String result = "";
-		
+
 		HashMap<Object, Object> attributesMappingOnECRAndAWFList = new HashMap<Object, Object>();
 		HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
 		HashMap<Object, Object> ecrMessagesList = new HashMap<Object, Object>();
+		HashMap<Object, Object> genericMessagesList = new HashMap<Object, Object>();
 
 		try {
-			//Initialize logger
-			CommonUtil.initAppLogger(GenerateAWFFromECR.class, session);
+			// Initialize logger
+			GenericUtilities.initializeLogger(session);
 
-			// Load List Values
-			attributesMappingOnECRAndAWFList = CommonUtil.loadListValues(session, attributesMappingOnECRAndAWFListName);
-			awfMessagesList = CommonUtil.loadListValues(session, awfMessagesListName);
-			ecrMessagesList = CommonUtil.loadListValues(session, ecrMessagesListName);
+			// get Agile List Values
+			attributesMappingOnECRAndAWFList = GenericUtilities.getAgileListValues(session,
+					attributesMappingOnECRAndAWFListName);
+			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
+			ecrMessagesList = GenericUtilities.getAgileListValues(session, ecrMessagesListName);
+			genericMessagesList = GenericUtilities.getAgileListValues(session, genericMessagesListName);
 
-			// Get ECR Object
+			// Get eCR Object
 			IChange eCR = (IChange) dataObject;
 			logger.debug("ECR is:" + eCR);
 
 			if (eCR != null) {
 
 				HashMap<Object, Object> eCRAttrValues = new HashMap<Object, Object>();
-				String attrValue = "";
-
-				for (Object key : attributesMappingOnECRAndAWFList.keySet()) {
-					if (attributesMappingOnECRAndAWFList.get(key) != null) {
-
-						attrValue = CommonUtil.getSingleListValue(eCR, key.toString());
-						eCRAttrValues.put(key, attrValue);
-					}
-				}
+				eCRAttrValues = GenericUtilities.getIAAttributeValues(eCR, attributesMappingOnECRAndAWFList);
 				logger.debug("eCRAttrValues are:" + eCRAttrValues);
 
 				int countOfEmptyAttrs = 0;
-				String value = null;
-
-				for (Object key : eCRAttrValues.keySet()) {
-					value = (String) eCRAttrValues.get(key);
-					if (value == null || value.equals("")) {
-							countOfEmptyAttrs++;
-					}
-				}
-
+				countOfEmptyAttrs = GenericUtilities.getCountOfIAAttributes(genericMessagesList.get("NULL").toString(),
+						eCRAttrValues, session);
 				logger.debug("count of empty Attributes is" + countOfEmptyAttrs);
-			
+
 				if (countOfEmptyAttrs > 0) {
 					actionResult = new ActionResult(ActionResult.EXCEPTION,
-							new Exception(ecrMessagesList.get("VALUES_NOT_FILLED1").toString()+" "+eCR.toString()+"."
-									+ecrMessagesList.get("VALUES_NOT_FILLED2").toString()
-									));
-				}  else {
+							new Exception(ecrMessagesList.get("VALUES_NOT_FILLED1").toString() + " " + eCR.toString()
+									+ "." + ecrMessagesList.get("VALUES_NOT_FILLED2").toString()));
+				} else {
 					IAdmin admin = session.getAdminInstance();
 					IAgileClass subClass = admin.getAgileClass(awfMessagesList.get("AWF_SUBCLASS_NAME").toString());
 					IAutoNumber[] numSources = subClass.getAutoNumberSources();
@@ -100,12 +89,12 @@ public class GenerateAWFFromECR implements ICustomAction {
 					while (i < numSources.length) {
 						autoNumber = numSources[i];
 						logger.debug("autoNumber is:" + autoNumber);
-							if (autoNumber.toString().equals(awfMessagesList.get("AWF_AUTONUM_NAME").toString())) {
-								nextNumber = autoNumber.getNextNumber(subClass);
-								break;
-							}
-							i++;
-						
+						if (autoNumber.toString().equals(awfMessagesList.get("AWF_AUTONUM_NAME").toString())) {
+							nextNumber = autoNumber.getNextNumber(subClass);
+							break;
+						}
+						i++;
+
 					}
 					logger.debug("Next Autonmber is:" + nextNumber);
 
@@ -122,14 +111,32 @@ public class GenerateAWFFromECR implements ICustomAction {
 					logger.debug("AWF is:" + awf);
 
 					if (awf != null) {
+						// set eCR number on eCR attribute of AWF
 						awf.setValue(Integer.parseInt(awfMessagesList.get("ECR_ATTRID").toString()), eCR);
+						
+						// set AWF Workflow on workflow attribute of AWF
+						awf.setValue(Integer.parseInt(awfMessagesList.get("WORKFLOW_ATTRID").toString()),
+								awfMessagesList.get("AWF_WORKFLOW_NAME").toString());
 
-						// Add ECR to relationship tab of AWF
+						// Get Description from eCR and set description on AWF
+						String descriptionOfECR = (String) eCR
+								.getValue(Integer.parseInt(ecrMessagesList.get("DESCRIPTION_ATTRID").toString()));
+						logger.debug("Descripton of ECR:" + descriptionOfECR);
+						if(descriptionOfECR!=null) {
+							awf.setValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()),
+									descriptionOfECR);
+
+						}
+						
+						// Add AWF to relationship tab of eCR
 						ITable relationshipTab = eCR.getTable(ChangeConstants.TABLE_RELATIONSHIPS);
-						relationshipTab.createRow(awf);
-						result = awf.toString() + " " + ecrMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString() + " "
-								+ eCR.toString();
-						logger.debug("Result:"+result);
+						if(relationshipTab!=null) {
+							relationshipTab.createRow(awf);
+							result = awf.toString() + " " + ecrMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString() + " "
+									+ eCR.toString();
+							logger.debug("Result:" + result);
+						}
+					
 						actionResult = new ActionResult(ActionResult.STRING, result);
 					}
 
@@ -153,81 +160,67 @@ public class GenerateAWFFromECR implements ICustomAction {
 	 * This method iterates through the list of attributes and copies the attribute
 	 * values from ECR Object to AWF Object
 	 * 
-	 * @param sourceObj
-	 * @param attributeIDsList
+	 * @param eCR
+	 * @param attributeIdsList
 	 * @param session
-	 * @param sourceObjectClassName
-	 * @param targetObjectClassName
+	 * @param eCRClassName
+	 * @param awfClassName
 	 * @return
 	 * @throws APIException
 	 */
-	public static HashMap<Object, Object> copyAttributeValuesFromECRToAWF(IDataObject ECR,
-			HashMap<Object, Object> attributeIDsList, IAgileSession session, String sourceObjectClassName,
-			String targetObjectClassName) throws APIException {
+	public static HashMap<Object, Object> copyAttributeValuesFromECRToAWF(IDataObject eCR,
+			HashMap<Object, Object> attributeIdsList, IAgileSession session, String eCRClassName, String awfClassName)
+			throws APIException {
+
 		HashMap<Object, Object> map = new HashMap<Object, Object>();
-		int sourceObjAttrID = 0;
-		int sourceObjDataType = 0;
-		int targetObjAttrID = 0;
-		int targetObjDataType = 0;
+		int eCRAttrID = 0;
+		int eCRAttrDataType = 0;
+		int awfAttrID = 0;
+		int awfAttrDataType = 0;
+		IAttribute eCRattribute = null;
+		IAttribute awfAttribute = null;
 
-		IAttribute sourceObjAttribute = null;
-		String value = null;
-		String[] attributeIDs = null;
-		String attributeID = null;
-		IAttribute targetObjAttribute = null;
+		for (Object key : attributeIdsList.keySet()) {
 
-		for (Object key : attributeIDsList.keySet()) {
+			if (attributeIdsList.get(key) != null) {
 
-			if (attributeIDsList.get(key) != null) {
+				/* Get eCR attribute IDs from list */
+				eCRAttrID = Integer.parseInt(key.toString());
+				eCRattribute = session.getAdminInstance().getAgileClass(eCRClassName).getAttribute(eCRAttrID);
+				eCRAttrDataType = eCRattribute.getDataType();
+				logger.debug("eCR Attribute Data Type is" + eCRAttrDataType);
 
-				/* Get the Source Object attribute IDs */
-				sourceObjAttrID = Integer.parseInt(key.toString());
-				sourceObjAttribute = session.getAdminInstance().getAgileClass(sourceObjectClassName)
-						.getAttribute(sourceObjAttrID);
-				sourceObjDataType = sourceObjAttribute.getDataType();
-				logger.debug("Source Object data type  is" + sourceObjDataType);
+				/* Get awf attribute IDs from list */
+				awfAttrID = Integer.parseInt(attributeIdsList.get(key).toString());
+				awfAttribute = session.getAdminInstance().getAgileClass(awfClassName).getAttribute(awfAttrID);
+				awfAttrDataType = awfAttribute.getDataType();
+				logger.debug("AWF attribute data type  is" + awfAttrDataType);
 
-				value = (String) attributeIDsList.get(key);
-				attributeIDs = value.split(",");
-				logger.debug("Attribute IDs are" + attributeIDs);
+				/* Copy the values */
+				if (eCRAttrDataType == DataTypeConstants.TYPE_SINGLELIST
+						&& awfAttrDataType == DataTypeConstants.TYPE_SINGLELIST) {
 
-				for (int k = 0; k < attributeIDs.length; k++) {
-					attributeID = attributeIDs[k];
-					logger.debug("Attribute ID is" + attributeID);
+					ICell cell = eCR.getCell(eCRAttrID);
+					IAgileList agileList = (IAgileList) cell.getValue();
+					IAgileList[] selection = agileList.getSelection();
+					if (selection != null && selection.length > 0) {
+						String selectedvalue = (selection[0].getValue()).toString();
 
-					/* Get the target attribute IDs */
-					targetObjAttrID = Integer.parseInt(attributeID);
-					targetObjAttribute = session.getAdminInstance().getAgileClass(targetObjectClassName)
-							.getAttribute(targetObjAttrID);
-					targetObjDataType = targetObjAttribute.getDataType();
-					logger.debug("Target Object data type  is" + targetObjDataType);
+						logger.debug("eCR Attribute cell value is" + selectedvalue);
+						if (!selectedvalue.equals("") && !selectedvalue.isEmpty()) {
+							IAgileList availableValues = awfAttribute.getAvailableValues();
 
-					/* Based on the data type set the values */
-					if (sourceObjDataType == DataTypeConstants.TYPE_SINGLELIST) {
-						ICell cell = ECR.getCell(sourceObjAttrID);
-						IAgileList selection = (IAgileList) cell.getValue();
-						String selectedvalue = "";
-						IAgileList[] selected = selection.getSelection();
-						if (selected != null && selected.length > 0) {
-							selectedvalue = (selected[0].getValue()).toString();
+							availableValues.setSelection(new Object[] { selectedvalue });
+							map.put(awfAttribute, availableValues);
 
-							logger.debug("source Object cell value is" + selectedvalue);
-							if (!selectedvalue.equals("") && !selectedvalue.equals(null)) {
-								IAgileList availableValues = targetObjAttribute.getAvailableValues();
-
-								logger.debug("List API name is" + availableValues.getAPIName());
-								availableValues.setSelection(new Object[] { selectedvalue });
-								map.put(targetObjAttribute, availableValues);
-
-							}
 						}
 					}
-
 				}
-				
 
 			}
+
 		}
+
 		logger.debug("Map values are:" + map);
 		return map;
 	}
