@@ -12,11 +12,11 @@ import com.agile.api.IChange;
 import com.agile.api.IDataObject;
 import com.agile.api.INode;
 import com.agile.api.ITable;
-import com.agile.util.CommonUtil;
+import com.agile.util.GenericUtilities;
 
 /**
  * 
- * @author Supriya Varada
+ * @author Supriya
  * This PX creates a DCO Object and adds it to the relationship tab of ECR
  *
  */
@@ -32,13 +32,13 @@ public class GenerateDCOFromECR implements ICustomAction {
 		try {
 			
 			//Initialize logger
-			CommonUtil.initAppLogger(GenerateDCOFromECR.class, session);
+			GenericUtilities.initializeLogger(session);
 			
-			//load list values
+			//Get Agile list values
 			HashMap<Object, Object> ecrMessagesList = new HashMap<Object, Object>();
-			ecrMessagesList = CommonUtil.loadListValues(session, ecrMessagesListName);
+			ecrMessagesList = GenericUtilities.getAgileListValues(session, ecrMessagesListName);
 		
-			// Get ECR Object
+			// Get eCR Object
 			IChange eCR = (IChange) dataObject;
 			logger.debug("ECR is:" + eCR);
 			
