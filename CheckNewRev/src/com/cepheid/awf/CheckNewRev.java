@@ -51,8 +51,12 @@ public class CheckNewRev implements IEventAction {
 	String msg = "";
 	int i = 1, flag = 0;
 
-	/**
-	 *
+	/**Function which is invoked from the Event PX.
+	 * Iterates the attachments of each of the affected items and checks the revision in the document matches
+	 * with that mentioned in the NewRev attribute.
+	 * returns - Exception if the rev does not match in the form of a concatenated string of 
+	 * error messages for all items and attachments.
+	 *  Success message if the rev matches.
 	 */
 	public EventActionResult doAction(IAgileSession session, INode node, IEventInfo eventinfo) {
 
@@ -79,7 +83,10 @@ public class CheckNewRev implements IEventAction {
 				logger.info("Part is :" + part);
 				newRev = row.getCell(ChangeConstants.ATT_AFFECTED_ITEMS_NEW_REV);
 				logger.info("New Revision is :" + newRev);
-
+                if (newRev.toString().equals(""))
+                {
+                	throw new Exception("New Revision is null");
+                }
 				// Iterate Attachments Table
 				ITable attachmentsTable = part.getTable(ItemConstants.TABLE_ATTACHMENTS);
 				attachmentsTableIterator = attachmentsTable.iterator();
@@ -119,11 +126,18 @@ public class CheckNewRev implements IEventAction {
 			actionResult = new ActionResult(ActionResult.EXCEPTION, e);
 			e.printStackTrace();
 			logger.error("Creation of Extension failed due to" + e.getMessage());
+			return new EventActionResult(eventinfo, actionResult);
+		} catch (Exception e) {
+			e.printStackTrace();
+			logger.error(e.getMessage());
+			actionResult = new ActionResult(ActionResult.EXCEPTION, e);
+			return new EventActionResult(eventinfo, actionResult);
 		}
 
-		Iterator<String> itr = fileNameList.iterator();
-		logger.info("filenamelist retrieved-------");
-	
+		if(!fileNameList.isEmpty())
+		{
+			logger.info("filenamelist retrieved-------");
+			
 		try {
 
 			for (i = 0; i < fileNameList.size();) {
@@ -135,7 +149,7 @@ public class CheckNewRev implements IEventAction {
 					}
 					i++;
 				}
-			logger.info(concatenatedMessages);
+			logger.info("Concatenated Message = "+concatenatedMessages);
              
 
 			if (flag == 1) {
@@ -149,6 +163,7 @@ public class CheckNewRev implements IEventAction {
 		} catch (Exception e) {
 			actionResult = new ActionResult(ActionResult.EXCEPTION, e);
 		}
+	}
 		logger.info("actionresult is: " + actionResult.toString());
 		return new EventActionResult(eventinfo, actionResult);
 	}
@@ -171,19 +186,28 @@ public class CheckNewRev implements IEventAction {
 		FileInputStream fileInput = new FileInputStream(file);
         if(file.getName().toString().endsWith("xls"))
         {
-        	 wb = new HSSFWorkbook(fileInput); 
+        	logger.info("Creating workbook for XLS file");
+        	wb = new HSSFWorkbook(fileInput); 
+        	logger.info("Workbook created");
         }
         else 
         {
+        	logger.info("Creating workbook for XLSX file");
         	wb = new XSSFWorkbook(fileInput); 
+        	logger.info("Workbook created");
         }
         	
 		for (int i=0; i<wb.getNumberOfSheets();i++)
-		{    sheet =  wb.getSheetAt(i);
+		{    
+		logger.info("inside for loop");	
+		sheet =  wb.getSheetAt(i);
+		logger.info("got the sheet at:"+i);	
         Header header = sheet.getHeader();  
+        logger.info("got the header");
 		sHeaderData = header.getRight();
-				
+		logger.info("Got Header data:"+sHeaderData);		
 		Map<String, String> map = new HashMap<String, String>();
+		
 		String[] headerDataSplit = sHeaderData.split("\n");
 		for (String s : headerDataSplit) {
 			if (s.contains(":")) {
@@ -210,9 +234,14 @@ public class CheckNewRev implements IEventAction {
 		}
 		catch(IOException io)
 		{
-			logger.error(io);
+			logger.debug(io);
 			io.printStackTrace();
 		}
+		catch(Exception e)
+		{
+			logger.debug(e);
+		}
+		sHeaderData ="";
 		return sHeaderData;
 		
 	}
@@ -269,10 +298,12 @@ public class CheckNewRev implements IEventAction {
 			if (file.getName().endsWith("xls")||file.getName().endsWith("xlsx"))
 			headerData = sGetHeaderDataForExcel(file,part);
 			else if(file.getName().endsWith("docx"))
-			headerData = sGetHeaderDataForDocX(file);	
+			headerData = sGetHeaderDataForDocX(file);
+			else 
+			return message;
 			
 		if(headerData.equals(""))
-			
+		return message;	
 			
 			logger.info("Header data in String" + headerData);
 
