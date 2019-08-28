@@ -19,8 +19,8 @@ import com.agile.util.GenericUtilities;
 
 /**
  * 
- * @author Supriya 
- * This PX displays a message to user if any Impact assessment attribute is not filled on eCR before generating AWF.
+ * @author Supriya
+ * This PX displays a message to user if any Impact assessment attribute is not filled on eCR while generating AWF.
  * If all Impact assessment attributes are filled,AWF is created and added to relationship tab of eCR. 
  * All Impact assessment attribute values,Description,Impact/Risk/Justification are copied from ECR to AWF.
  * AWFWorkflow is set on Workflow attribute of AWF
