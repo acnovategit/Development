@@ -1,29 +1,28 @@
-package com.agile.px;
+package com.cepheid.awf;
 
 import java.util.HashMap;
 import org.apache.log4j.Logger;
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
 import com.agile.api.DataTypeConstants;
-import com.agile.api.IAdmin;
-import com.agile.api.IAgileClass;
 import com.agile.api.IAgileList;
 import com.agile.api.IAgileSession;
 import com.agile.api.IAttribute;
-import com.agile.api.IAutoNumber;
 import com.agile.api.ICell;
 import com.agile.api.IChange;
 import com.agile.api.IDataObject;
 import com.agile.api.INode;
 import com.agile.api.ITable;
+import com.agile.px.ActionResult;
+import com.agile.px.ICustomAction;
 import com.agile.util.GenericUtilities;
 
 /**
  * 
- * @author Supriya 
- * This PX displays a message to user if any Impact assessment attributes are not filled on eCR before generating AWF. 
+ * @author Supriya
+ * This PX displays a message to user if any Impact assessment attribute is not filled on eCR while generating AWF.
  * If all Impact assessment attributes are filled,AWF is created and added to relationship tab of eCR. 
- * All Impact assessment attribute values,Description are copied from ECR to AWF.
+ * All Impact assessment attribute values,Description,Impact/Risk/Justification are copied from ECR to AWF.
  * AWFWorkflow is set on Workflow attribute of AWF
  *
  */
@@ -64,40 +63,29 @@ public class GenerateAWFFromECR implements ICustomAction {
 			logger.debug("ECR is:" + eCR);
 
 			if (eCR != null) {
-
+				//Get Impact assessment attribute values of eCR
 				HashMap<Object, Object> eCRAttrValues = new HashMap<Object, Object>();
 				eCRAttrValues = GenericUtilities.getIAAttributeValues(eCR, attributesMappingOnECRAndAWFList);
 				logger.debug("eCRAttrValues are:" + eCRAttrValues);
 
+				//Get count of empty Impact Assessment attribute values of eCR
 				int countOfEmptyAttrs = 0;
 				countOfEmptyAttrs = GenericUtilities.getCountOfIAAttributes(genericMessagesList.get("NULL").toString(),
 						eCRAttrValues, session);
 				logger.debug("count of empty Attributes is" + countOfEmptyAttrs);
 
+				//If count>0, throw exception else create AWF
 				if (countOfEmptyAttrs > 0) {
 					actionResult = new ActionResult(ActionResult.EXCEPTION,
 							new Exception(ecrMessagesList.get("VALUES_NOT_FILLED1").toString() + " " + eCR.toString()
 									+ "." + ecrMessagesList.get("VALUES_NOT_FILLED2").toString()));
 				} else {
-					IAdmin admin = session.getAdminInstance();
-					IAgileClass subClass = admin.getAgileClass(awfMessagesList.get("AWF_SUBCLASS_NAME").toString());
-					IAutoNumber[] numSources = subClass.getAutoNumberSources();
-
-					String nextNumber = "";
-					int i = 0;
-					IAutoNumber autoNumber = null;
-					while (i < numSources.length) {
-						autoNumber = numSources[i];
-						logger.debug("autoNumber is:" + autoNumber);
-						if (autoNumber.toString().equals(awfMessagesList.get("AWF_AUTONUM_NAME").toString())) {
-							nextNumber = autoNumber.getNextNumber(subClass);
-							break;
-						}
-						i++;
-
-					}
+					// Get Next number from Auto Number
+					String nextNumber = GenericUtilities.getNextAutoNumber(session,awfMessagesList.get("AWF_SUBCLASS_NAME").toString(),
+							awfMessagesList.get("AWF_AUTONUM_NAME").toString());
 					logger.debug("Next Autonmber is:" + nextNumber);
-
+					
+					//copy impact assessment attribute values from eCR to AWF
 					HashMap<Object, Object> map = new HashMap<Object, Object>();
 					map = copyAttributeValuesFromECRToAWF(eCR, attributesMappingOnECRAndAWFList, session,
 							ecrMessagesList.get("ECR_SUBCLASS_NAME").toString(),
@@ -106,6 +94,7 @@ public class GenerateAWFFromECR implements ICustomAction {
 					map.put(Integer.parseInt(awfMessagesList.get("AWFNUM_ATTRID").toString()), nextNumber);
 					logger.debug("Map is:" + map);
 
+					//create AWF
 					IChange awf = (IChange) session.createObject(awfMessagesList.get("AWF_SUBCLASS_NAME").toString(),
 							map);
 					logger.debug("AWF is:" + awf);
@@ -113,30 +102,37 @@ public class GenerateAWFFromECR implements ICustomAction {
 					if (awf != null) {
 						// set eCR number on eCR attribute of AWF
 						awf.setValue(Integer.parseInt(awfMessagesList.get("ECR_ATTRID").toString()), eCR);
-						
+
 						// set AWF Workflow on workflow attribute of AWF
 						awf.setValue(Integer.parseInt(awfMessagesList.get("WORKFLOW_ATTRID").toString()),
 								awfMessagesList.get("AWF_WORKFLOW_NAME").toString());
 
-						// Get Description from eCR and set description on AWF
+						// Get Description from eCR and set on AWF
 						String descriptionOfECR = (String) eCR
 								.getValue(Integer.parseInt(ecrMessagesList.get("DESCRIPTION_ATTRID").toString()));
 						logger.debug("Descripton of ECR:" + descriptionOfECR);
-						if(descriptionOfECR!=null) {
+						if (descriptionOfECR != null && !descriptionOfECR.equals("")) {
 							awf.setValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()),
 									descriptionOfECR);
-
 						}
-						
+
+						// Get Impact/Risk/Justification from eCR and set on AWF
+						String impact = (String) eCR
+								.getValue(Integer.parseInt(ecrMessagesList.get("IMPACT_ATTRID").toString()));
+						logger.debug("Impact/Risk/Justification of ECR:" + impact);
+						if (impact != null && !impact.equals("")) {
+							awf.setValue(Integer.parseInt(awfMessagesList.get("IMPACT_ATTRID").toString()), impact);
+						}
+
 						// Add AWF to relationship tab of eCR
 						ITable relationshipTab = eCR.getTable(ChangeConstants.TABLE_RELATIONSHIPS);
-						if(relationshipTab!=null) {
+						if (relationshipTab != null) {
 							relationshipTab.createRow(awf);
-							result = awf.toString() + " " + ecrMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString() + " "
-									+ eCR.toString();
+							result = awf.toString() + " " + ecrMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString()
+									+ " " + eCR.toString();
 							logger.debug("Result:" + result);
 						}
-					
+
 						actionResult = new ActionResult(ActionResult.STRING, result);
 					}
 
@@ -182,7 +178,7 @@ public class GenerateAWFFromECR implements ICustomAction {
 
 		for (Object key : attributeIdsList.keySet()) {
 
-			if (attributeIdsList.get(key) != null) {
+			if (attributeIdsList.get(key) != null && !attributeIdsList.get(key).equals("")) {
 
 				/* Get eCR attribute IDs from list */
 				eCRAttrID = Integer.parseInt(key.toString());
