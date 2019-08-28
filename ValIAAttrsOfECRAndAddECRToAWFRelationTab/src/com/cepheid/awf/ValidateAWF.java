@@ -12,7 +12,6 @@ import com.agile.api.IAgileList;
 import com.agile.api.IAgileSession;
 import com.agile.api.ICell;
 import com.agile.api.IChange;
-import com.agile.api.IDataObject;
 import com.agile.api.IItem;
 import com.agile.api.INode;
 import com.agile.api.IRow;
