@@ -63,7 +63,6 @@ public class GenerateAWFFromECR implements ICustomAction {
 			logger.debug("ECR is:" + eCR);
 
 			if (eCR != null) {
-
 				//Get Impact assessment attribute values of eCR
 				HashMap<Object, Object> eCRAttrValues = new HashMap<Object, Object>();
 				eCRAttrValues = GenericUtilities.getIAAttributeValues(eCR, attributesMappingOnECRAndAWFList);
