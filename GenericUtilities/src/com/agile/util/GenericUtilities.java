@@ -3,16 +3,22 @@ package com.agile.util;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Properties;
+import java.util.TimeZone;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import com.agile.api.APIException;
 import com.agile.api.IAdmin;
 import com.agile.api.IAdminList;
+import com.agile.api.IAgileClass;
 import com.agile.api.IAgileList;
 import com.agile.api.IAgileSession;
+import com.agile.api.IAutoNumber;
 import com.agile.api.ICell;
 import com.agile.api.IDataObject;
 import com.agile.api.IListLibrary;
@@ -69,9 +75,9 @@ public class GenericUtilities {
 	 */
 	public static String getSingleListAttributeValue(IDataObject dataObject, String attrID)
 			throws NumberFormatException, APIException {
+		String cellValue = null;
 		ICell cell = dataObject.getCell(Integer.parseInt(attrID));
 		IAgileList agileList = (IAgileList) cell.getValue();
-		String cellValue = null;
 		IAgileList[] listValues = agileList.getSelection();
 		if (listValues != null && listValues.length > 0) {
 			cellValue = (listValues[0].getValue()).toString();
@@ -122,16 +128,19 @@ public class GenericUtilities {
 		ArrayList<String> multiListAttributeValues = new ArrayList<String>();
 		ICell cell = dataObject.getCell(Integer.parseInt(attrID));
 		IAgileList agileList = (IAgileList) cell.getValue();
-		String listValues = agileList.toString();
-		if (!listValues.equals("") && !listValues.isEmpty()) {
-			Object[] objectArray = listValues.split(";");
-			String listValue = null;
-			for (int i = 0; i < objectArray.length; i++) {
-				listValue = objectArray[i].toString();
-				multiListAttributeValues.add(listValue);
+		if (agileList != null) {
+			String listValues = agileList.toString();
+			if (!listValues.equals("") && !listValues.isEmpty()) {
+				Object[] objectArray = listValues.split(";");
+				String listValue = null;
+				for (int i = 0; i < objectArray.length; i++) {
+					listValue = objectArray[i].toString();
+					multiListAttributeValues.add(listValue);
+				}
 			}
+			logger.debug("MultiList Attribute Values are:" + multiListAttributeValues);
 		}
-		logger.debug("MultiList Attribute Values are:"+multiListAttributeValues);
+
 		return multiListAttributeValues;
 	}
 
@@ -150,7 +159,7 @@ public class GenericUtilities {
 		String attributeValue = "";
 
 		for (Object key : attributeIdsList.keySet()) {
-			if (attributeIdsList.get(key) != null) {
+			if (attributeIdsList.get(key) != null && !attributeIdsList.get(key).equals("")) {
 
 				attributeValue = getSingleListAttributeValue(dataObject, attributeIdsList.get(key).toString());
 				attributeValues.put(attributeIdsList.get(key), attributeValue);
@@ -197,4 +206,57 @@ public class GenericUtilities {
 		logger.debug("Count of " + parameter + " Values:" + count);
 		return count;
 	}
+	
+	/**
+	 * This method returns the nextNumber from the autoNumber of subclass
+	 * @param session
+	 * @param className
+	 * @param autoNumberName
+	 * @return
+	 * @throws APIException
+	 */
+	public static String getNextAutoNumber(IAgileSession session,String className,String autoNumberName) throws APIException {
+		String nextNumber = "";
+		
+		//Get the autoNumber sources for the class
+		IAdmin admin = session.getAdminInstance();
+		IAgileClass subClass = admin.getAgileClass(className);
+		IAutoNumber[] numberSources = subClass.getAutoNumberSources();
+		IAutoNumber autoNumber = null;
+		
+		//Iterate through the autoNumber sources and get the required autoNumber
+		for(int i=0;i<numberSources.length;i++) {
+			if(numberSources[i].getName().equals(autoNumberName))
+			{
+				autoNumber = numberSources[i];
+				break;
+			}
+		}
+		
+		//Get nextNumber from the autoNumber
+		nextNumber = autoNumber.getNextNumber(subClass);
+		logger.debug("Next Autonmber is:" + nextNumber);
+		
+		return nextNumber;
+		
+	}
+	
+	/**
+	 * This method returns the date after converting it based on Timezone and format
+	 * @param timeZoneName
+	 * @param format
+	 * @param dateToBeParsed
+	 * @return
+	 */
+	public static String getDateBasedOnTimeZoneAndFormat(String timeZoneName, String format, Date dateToBeParsed) {
+
+		TimeZone timeZone = TimeZone.getTimeZone(timeZoneName);
+		DateFormat dateFormat = new SimpleDateFormat(format);
+		dateFormat.setTimeZone(timeZone);
+		String date = dateFormat.format(dateToBeParsed);
+		logger.debug("Date based on Timezone is:"+date);
+		return date;
+
+	}
+
 }
