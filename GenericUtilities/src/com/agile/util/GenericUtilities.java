@@ -14,6 +14,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Properties;
 import java.util.TimeZone;
+import javax.mail.MessagingException;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMessage.RecipientType;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import com.agile.api.APIException;
@@ -308,75 +315,66 @@ public class GenericUtilities {
 	}
 
 	/**
-	 * This method fetches the user by querying based on first name, last name and
-	 * User ID from the userName
-	 * 
-	 * @param agileSession
-	 * @param userFullName
+	 * This method fetches the user by querying based on first name, last name and User ID/Email ID from the userName
+	 * @param session
+	 * @param userName
 	 * @param criteria
-	 * @param logger
-	 * @return matching User
+	 * @return
 	 * @throws APIException
 	 */
 	public static IUser getAgileUser(IAgileSession session, String userName, String criteria) throws APIException {
 
 		IUser user = null;
-		boolean flag = false;
-		// Iterate through the name and search for '(' to get the userName format.
-		for (int i = 0; i < userName.length(); i++) {
-			if (userName.charAt(i) == '(') {
-				flag = true;
-				break;
-			}
-		}
-		logger.debug("Flag:" + flag);
+		String lastName = "";
+		String firstName = "";
+		String userIdOrEmailId = "";
 
-		String LastName = "";
-		String FirstName = "";
-		String userId = "";
+		if (userName != null && !userName.equals("") && userName.contains("(")) {
 
-		// If Username format is LastName,FirstName(UserID),split based on '('
-		if (flag == true) {
+			// Split the username based on '('
 			String[] name = userName.split("\\(");
-			logger.debug("userName:" + name[1]);
-			String nameTrimmed = name[1].trim();
-			logger.debug("userName Length:" + nameTrimmed.length());
-			userId = nameTrimmed.substring(0, nameTrimmed.length() - 1);
-			logger.debug("User Id :" + userId);
+			logger.debug("Text before ( in username:" + name[0]);
+			logger.debug("Text after ) in username:" + name[1]);
 
-			String[] fullName = name[0].split(",");
-			logger.info("Name size is:" + fullName.length);
-			LastName = fullName[0].trim();
-			FirstName = fullName[1].trim();
+			// Trim any spaces in second part and remove the end ')' to retrieve email
+			// id/user id
+			String userIdOrEmailIdTrimmed = name[1].trim();
+			userIdOrEmailId = userIdOrEmailIdTrimmed.substring(0, userIdOrEmailIdTrimmed.length() - 1).trim();
+			logger.debug("User Id/Email Id :" + userIdOrEmailId);
+
+			// Split the first part based on ',' to retrieve first name and last name
+			String[] fullName = name[0].trim().split(",");
+			lastName = fullName[0].trim();
+			firstName = fullName[1].trim();
+
+			logger.debug("LastName:" + lastName);
+			logger.debug("FirstName:" + firstName);
+
+			if (firstName != null && !firstName.equals("") && lastName != null && !lastName.equals("")
+					&& userIdOrEmailId != null && !userIdOrEmailId.equals("")) {
+				
+				// Query for the user based on First Name,Last Name and User ID/Email ID
+				IQuery queryUser = (IQuery) session.createObject(IQuery.OBJECT_TYPE, UserConstants.CLASS_USER);
+				queryUser.setCaseSensitive(false);
+				queryUser.setCriteria(criteria);
+				queryUser.setParams(new Object[] { firstName, lastName, userIdOrEmailId });
+
+				ITable table = queryUser.execute();
+				@SuppressWarnings("unchecked")
+				Iterator<IRow> it = table.iterator();
+				IRow row = null;
+
+				// Iterate through the results and fetch user
+				while (it.hasNext()) {
+					row = it.next();
+					user = (IUser) row.getReferent();
+				}
+
+			}
+			logger.debug("User is:"+user);
+
 		}
-		// If Username format is FirstName LastName ,split based on ' '
-		else {
-			String[] name = userName.split(" ");
-			logger.info("Name size is:" + name.length);
-			FirstName = name[0].trim();
-			LastName = name[1].trim();
-		}
 
-		logger.debug("LastName:" + LastName);
-		logger.debug("FirstName:" + FirstName);
-
-		// Query for the user based on First Name,Last Name and User ID
-		IQuery queryUser = (IQuery) session.createObject(IQuery.OBJECT_TYPE, UserConstants.CLASS_USER);
-		queryUser.setCaseSensitive(false);
-		queryUser.setCriteria(criteria);
-		queryUser.setParams(new Object[] { FirstName, LastName, userId });
-		logger.debug("Query is:" + queryUser.toString());
-
-		ITable table = queryUser.execute();
-		@SuppressWarnings("unchecked")
-		Iterator<IRow> it = table.iterator();
-		IRow row = null;
-
-		// Iterate through the results and fetch user
-		while (it.hasNext()) {
-			row = it.next();
-			user = (IUser) row.getReferent();
-		}
 		return user;
 	}
 
@@ -578,25 +576,79 @@ public class GenericUtilities {
 			throws APIException {
 		// If all impact assessment attributes are filled as No,autopromote AWF to
 		// Approve
+		
 		if (countOfYesAttrs == 0) {
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
 					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
 			logger.debug(awf+"Autopromoted to Submit/RA");
-
-			awf.changeStatus(
-					GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
-					false, "", false, false, null, null, null, null, false);
-			logger.debug(awf+"Autopromoted to Approve");
+			
+			if(awf.getStatus()!=null) {
+				logger.debug("Status of "+awf+" is:"+awf.getStatus());
+				if(awf.getStatus().toString().equalsIgnoreCase(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString())) {
+					awf.changeStatus(
+							GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
+							false, "", false, false, null, null, null, null, false);
+					logger.debug(awf+"Autopromoted to Approve");
+				}
+				
+			}
+		
 		}
 		// If any impact assessment attribute is filled as Yes,autopromote AWF to
 		// Submit/Regulatory affairs
 		else {
 
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
-					awf.getWorkflow()), false, null, false, false, null, null, null, null, false);
+					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
 			logger.debug(awf+"Autopromoted to Submit/RA");
 		}
 	}
 	
+	/**
+	 * This method is used to send an email
+	 * @param from
+	 * @param addressTo
+	 * @param html
+	 * @param subject
+	 */
+	public static void sendMail(IAgileSession agileSession,String addressFrom, InternetAddress[] addressTo, String html, String subject) {
+		
+		try {
+			logger.info("Inside send mail.");
+			
+			// Get Agile list values
+			awfMessagesList = getAgileListValues(agileSession, awfMessagesListName);
+			
+			//Set properties
+			Properties properties = System.getProperties();
+			properties.setProperty(awfMessagesList.get("MAILSERVER_HOSTNAME").toString(), awfMessagesList.get("MAILSERVER_IP").toString());
+			Session session = Session.getInstance(properties, (javax.mail.Authenticator)null);
+			
+			//Create message
+			MimeMessage message = new MimeMessage(session);
+			message.setFrom(new InternetAddress(addressFrom));
+			message.setRecipients(RecipientType.TO, addressTo);
+			message.setSubject(subject);
+			message.setContent(html, "text/html");
+			 
+			//send message
+			Transport.send(message);
+			logger.info("Message Sent.");
+			
+		} catch (AddressException ae) {
+			
+			ae.printStackTrace();
+			logger.error("Failed due to:" + ae.getMessage());
+		} catch (MessagingException me) {
+			
+			me.printStackTrace();
+			logger.error("Failed due to:" + me.getMessage());
+		} catch (Exception e) {
+			
+			e.printStackTrace();
+			logger.error("Failed due to:" + e.getMessage());
+		}
+		
+	}
 	
 }
