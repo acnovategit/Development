@@ -611,7 +611,7 @@ public class GenericUtilities {
 	 * @param html
 	 * @param subject
 	 */
-	public static void sendMail(IAgileSession agileSession,String addressFrom, InternetAddress[] addressTo, String html, String subject) {
+	public static void sendMail(IAgileSession agileSession,String addressFrom, String addressTo, String html, String subject) {
 		
 		try {
 			logger.info("Inside send mail.");
