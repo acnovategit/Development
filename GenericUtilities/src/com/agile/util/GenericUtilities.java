@@ -7,11 +7,13 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
 import java.util.TimeZone;
 import javax.mail.MessagingException;
@@ -25,11 +27,13 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
+import com.agile.api.DataTypeConstants;
 import com.agile.api.IAdmin;
 import com.agile.api.IAdminList;
 import com.agile.api.IAgileClass;
 import com.agile.api.IAgileList;
 import com.agile.api.IAgileSession;
+import com.agile.api.IAttribute;
 import com.agile.api.IAutoNumber;
 import com.agile.api.ICell;
 import com.agile.api.IChange;
@@ -84,7 +88,7 @@ public class GenericUtilities {
 		} catch (APIException e) {
 			logger.error("Failed due to exception while initializing logger:" + e);
 		} catch (IOException ioEx) {
-			logger.info("Failed due to exception while initializing logger:" + ioEx);
+			logger.error("Failed due to exception while initializing logger:" + ioEx);
 		}
 	}
 
@@ -109,7 +113,7 @@ public class GenericUtilities {
 		// If selection is not empty,fetch cell value
 		if (listValues != null && listValues.length > 0) {
 			cellValue = (listValues[0].getValue()).toString();
-			logger.debug("Cell Value is:" + cellValue);
+			logger.debug("Single list attribute Value of attribute Id "+attrID+" on "+dataObject+" is: " + cellValue);
 		}
 		return cellValue;
 	}
@@ -140,7 +144,7 @@ public class GenericUtilities {
 			if (!listValue.isObsolete())
 				map.put(listValue.getAPIName(), listValue.getValue());
 		}
-		logger.debug("List Values in a Map are:" + map);
+		logger.debug("List Values "+"of "+listName+" after converting into a Map are:" + map);
 		return map;
 	}
 
@@ -174,7 +178,7 @@ public class GenericUtilities {
 					multiListAttributeValues.add(listValue);
 				}
 			}
-			logger.debug("MultiList Attribute Values are:" + multiListAttributeValues);
+			logger.debug("Multi list attribute Values of attribute Id "+attrID+" on "+dataObject+" is: " + multiListAttributeValues);
 		}
 
 		return multiListAttributeValues;
@@ -182,30 +186,55 @@ public class GenericUtilities {
 
 	/**
 	 * This method returns the Impact assessment attribute Values
-	 * 
+	 * @param session
 	 * @param dataObject
-	 * @param attributeIdsList
+	 * @param eCRToAWFAttributeIdsMappingList
 	 * @return
 	 * @throws NumberFormatException
 	 * @throws APIException
 	 */
-	public static HashMap<Object, Object> getIAAttributeValues(IDataObject dataObject,
-			HashMap<Object, Object> attributeIdsList) throws NumberFormatException, APIException {
-		HashMap<Object, Object> attributeValues = new HashMap<Object, Object>();
-		String attributeValue = "";
+	public static HashMap<Object, Object> getImpactAssessmentAttrValues(IAgileSession session, IDataObject dataObject,
+			HashMap<Object, Object> eCRToAWFAttributeIdsMappingList) throws NumberFormatException, APIException {
 
-		// Iterate through the Impact assessment attribute Ids
-		for (Object key : attributeIdsList.keySet()) {
-			if (attributeIdsList.get(key) != null && !attributeIdsList.get(key).equals("")) {
+		// Get agile list values
+		awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 
-				// Get attribute value of each Impact assessment attribute and put into hashmap
-				attributeValue = getSingleListAttributeValue(dataObject, attributeIdsList.get(key).toString());
-				attributeValues.put(attributeIdsList.get(key), attributeValue);
+		// Get impact assessment attribute Ids from list into Array
+		String[] impactAssessmentAttributeIdsArray = awfMessagesList.get("IMPACT_ASSESSMENT_ATTRIDS").toString()
+				.split(",");
+		logger.debug(
+				"Impact assessment attribute Ids array contains:" + Arrays.toString(impactAssessmentAttributeIdsArray));
+
+		// Convert array to list
+		List<String> impactAssessmentAttributeIdsList = Arrays.asList(impactAssessmentAttributeIdsArray);
+		logger.debug("Impact assessment attribute Ids list contains:" + impactAssessmentAttributeIdsList);
+
+		HashMap<Object, Object> impactAssessmentAttributeValues = new HashMap<Object, Object>();
+		String impactAssessmentAttributeValue = "";
+
+		// Iterate through the eCR To AWF Attribute Ids Mapping List
+		for (Object key : eCRToAWFAttributeIdsMappingList.keySet()) {
+
+			if (eCRToAWFAttributeIdsMappingList.get(key) != null
+					&& !eCRToAWFAttributeIdsMappingList.get(key).equals("")) {
+
+				// If APIName and Name of eCRToAWFAttributeIdsMappingList belongs to
+				// impactAssessmentAttributeIdsList,get attribute value
+				if (impactAssessmentAttributeIdsList.contains(key)
+						&& impactAssessmentAttributeIdsList.contains(eCRToAWFAttributeIdsMappingList.get(key))) {
+
+					// Get attribute value of each Impact assessment attribute and put into hashmap
+					impactAssessmentAttributeValue = getSingleListAttributeValue(dataObject,
+							eCRToAWFAttributeIdsMappingList.get(key).toString());
+					impactAssessmentAttributeValues.put(eCRToAWFAttributeIdsMappingList.get(key),
+							impactAssessmentAttributeValue);
+				}
+
 			}
 		}
-		logger.debug("Impact Assessment atrribute values for"+dataObject+":" + attributeValues);
+		logger.debug("Impact Assessment atrribute values for " + dataObject + " are:" + impactAssessmentAttributeValues);
 
-		return attributeValues;
+		return impactAssessmentAttributeValues;
 	}
 
 	/**
@@ -218,7 +247,7 @@ public class GenericUtilities {
 	 * @return
 	 * @throws APIException
 	 */
-	public static int getCountOfIAAttributes(String parameter, HashMap<Object, Object> attributeValues,
+	public static int getCountOfImpactAssessmentAttributes(String parameter, HashMap<Object, Object> impactAssessmentAttributeValues,
 			IAgileSession session) throws APIException {
 
 		// Get Agile list values
@@ -227,8 +256,8 @@ public class GenericUtilities {
 		int count = 0;
 
 		// Iterate through the map of values and get each value
-		for (Object key : attributeValues.keySet()) {
-			value = (String) attributeValues.get(key);
+		for (Object key : impactAssessmentAttributeValues.keySet()) {
+			value = (String) impactAssessmentAttributeValues.get(key);
 
 			// If parameter passed is NULL and attribute value is NULL,increase the count of
 			// NULL values
@@ -244,7 +273,7 @@ public class GenericUtilities {
 					count++;
 				}
 			} else {
-				logger.debug("Invalid Parameter");
+				logger.info("Invalid Parameter");
 			}
 
 		}
@@ -283,7 +312,7 @@ public class GenericUtilities {
 		// Get nextNumber from the autoNumber
 		if(autoNumber!=null) {
 			nextNumber = autoNumber.getNextNumber(subClass);
-			logger.debug("Next Autonmber is:" + nextNumber);
+			logger.debug("Next number of "+autoNumber+" is:" + nextNumber);
 		}
 
 		return nextNumber;
@@ -309,7 +338,7 @@ public class GenericUtilities {
 
 		// Format the date based on TimeZone and Format
 		String date = dateFormat.format(dateToBeParsed);
-		logger.debug("Date based on Timezone is:" + date);
+		logger.debug("Date based on Timezone "+timeZoneName+" and format "+format+" for the date "+dateToBeParsed+" is: " + date);
 		return date;
 
 	}
@@ -401,7 +430,7 @@ public class GenericUtilities {
 			}
 			i++;
 		}
-		logger.debug("State is:" + state);
+		logger.debug("State in "+workflow+" with status name "+statusName+ " is: " + state);
 
 		return state;
 	}
@@ -470,12 +499,10 @@ public class GenericUtilities {
 		// Fetch approvers based on status
 		ISignoffReviewer[] approvers = awf.getReviewers(awf.getStatus(), WorkflowConstants.USER_APPROVER);
 		int totalNumOfApprovers = approvers.length;
-		logger.debug("Total Number of Approvers for awf "+awf+":" + totalNumOfApprovers);
 
 		// Fetch acknowledgers based on status
 		ISignoffReviewer[] acknowledgers = awf.getReviewers(awf.getStatus(), WorkflowConstants.USER_ACKNOWLEDGER);
 		int totalNumOfAcknowledgers = acknowledgers.length;
-		logger.debug("Total Number of Acknowledgers for awf "+awf+":"+ totalNumOfAcknowledgers);
 
 		HashMap<Object, Object> pendingSignOffDetails = new HashMap<Object, Object>();
 		HashSet<String> pendingApprovers = new HashSet<String>();
@@ -537,7 +564,7 @@ public class GenericUtilities {
 							numOfAcknowledgementsDone++;
 						} else {
 
-							logger.debug("Invalid action");
+							logger.info("Invalid action");
 						}
 					}
 
@@ -545,12 +572,6 @@ public class GenericUtilities {
 			}
 
 		}
-		logger.debug("Approval Pending for "+awf+":" + approvalPending);
-		logger.debug("Acknowledgement Pending for"+awf+":" + acknowledgementPending);
-		logger.debug("Number of Approvals done for "+awf+":"+ numOfApprovalsDone);
-		logger.debug("Number of Acknowledgements done for "+awf+":" + numOfAcknowledgementsDone);
-		logger.debug("Pending Approvers for "+awf+":"+ pendingApprovers);
-		logger.debug("Pending Approvers size for "+awf+":" + pendingApprovers.size());
 
 		pendingSignOffDetails.put("approvalPending", approvalPending);
 		pendingSignOffDetails.put("acknowledgementPending", acknowledgementPending);
@@ -560,6 +581,7 @@ public class GenericUtilities {
 		pendingSignOffDetails.put("totalNumOfApprovers", totalNumOfApprovers);
 		pendingSignOffDetails.put("totalNumOfAcknowledgers", totalNumOfAcknowledgers);
 
+		logger.debug("Pending Signoff details for "+awf+" is: "+pendingSignOffDetails);
 		return pendingSignOffDetails;
 	}
 
@@ -580,7 +602,7 @@ public class GenericUtilities {
 		if (countOfYesAttrs == 0) {
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
 					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
-			logger.debug(awf+"Autopromoted to Submit/RA");
+			logger.info(awf+"Autopromoted to Submit/RA");
 			
 			if(awf.getStatus()!=null) {
 				logger.debug("Status of "+awf+" is:"+awf.getStatus());
@@ -588,7 +610,7 @@ public class GenericUtilities {
 					awf.changeStatus(
 							GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
 							false, "", false, false, null, null, null, null, false);
-					logger.debug(awf+"Autopromoted to Approve");
+					logger.info(awf+"Autopromoted to Approve");
 				}
 				
 			}
@@ -600,7 +622,7 @@ public class GenericUtilities {
 
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
 					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
-			logger.debug(awf+"Autopromoted to Submit/RA");
+			logger.info(awf+"Autopromoted to Submit/RA");
 		}
 	}
 	
@@ -650,5 +672,93 @@ public class GenericUtilities {
 		}
 		
 	}
+	
+	/**
+	 * This method iterates through the list of attributes and copies the attribute
+	 * values from Source Object to target Object
+	 * 
+	 * @param sourceObject
+	 * @param attributeIdsMappingList
+	 * @param session
+	 * @param sourceObjClassName
+	 * @param targetObjClassName
+	 * @return
+	 * @throws APIException
+	 */
+	public static HashMap<Object, Object> copyAttrValuesFromSourceObjToTargetObj(IDataObject sourceObject,
+			HashMap<Object, Object> attributeIdsMappingList, IAgileSession session, String sourceObjClassName,
+			String targetObjClassName) throws APIException {
+
+		// Get Agile List
+		awfMessagesList = getAgileListValues(session, awfMessagesListName);
+
+		HashMap<Object, Object> map = new HashMap<Object, Object>();
+		int sourceObjAttrId = 0;
+		int sourceObjDataType = 0;
+		int targetObjAttrId = 0;
+		int targetObjDataType = 0;
+		IAttribute sourceAttrName = null;
+		IAttribute targetAttrName = null;
+		Object sourceObjAttrValue = null;
+
+		// Iterate through attribute Ids mapping list
+		for (Object key : attributeIdsMappingList.keySet()) {
+
+			if (attributeIdsMappingList.get(key) != null && !attributeIdsMappingList.get(key).equals("")) {
+
+				/* Get source object attribute IDs from mapping list */
+				sourceObjAttrId = Integer.parseInt(key.toString());
+				sourceAttrName = session.getAdminInstance().getAgileClass(sourceObjClassName)
+						.getAttribute(sourceObjAttrId);
+				sourceObjDataType = sourceAttrName.getDataType();
+				logger.debug("Source Object Attribute Data Type is:" + sourceObjDataType);
+
+				/* Get target object attribute IDs from mapping list */
+				targetObjAttrId = Integer.parseInt(attributeIdsMappingList.get(key).toString());
+				targetAttrName = session.getAdminInstance().getAgileClass(targetObjClassName)
+						.getAttribute(targetObjAttrId);
+				targetObjDataType = targetAttrName.getDataType();
+				logger.debug("Target Object attribute data type  is:" + targetObjDataType);
+
+				/* Copy the values based on data type */
+				if (sourceObjDataType == DataTypeConstants.TYPE_SINGLELIST
+						&& targetObjDataType == DataTypeConstants.TYPE_SINGLELIST) {
+
+					ICell cell = sourceObject.getCell(sourceObjAttrId);
+					IAgileList agileList = (IAgileList) cell.getValue();
+					IAgileList[] selection = agileList.getSelection();
+					if (selection != null && selection.length > 0) {
+						String selectedvalue = (selection[0].getValue()).toString();
+						logger.debug("Source Object attribute value is:" + selectedvalue);
+
+						if (!selectedvalue.equals("") && !selectedvalue.isEmpty() && selectedvalue != null) {
+							IAgileList availableValues = sourceAttrName.getAvailableValues();
+							availableValues.setSelection(new Object[] { selectedvalue });
+							map.put(targetAttrName, availableValues);
+
+						}
+					}
+				}
+
+				else if (sourceObjDataType == DataTypeConstants.TYPE_STRING
+						&& targetObjDataType == DataTypeConstants.TYPE_STRING) {
+					sourceObjAttrValue = sourceObject.getValue(sourceObjAttrId);
+					logger.debug("Source Object Attribute value is" + sourceObjAttrValue);
+
+					if (sourceObjAttrValue != null) {
+						map.put(targetObjAttrId, sourceObjAttrValue);
+					}
+				} else {
+					logger.info("Invalid Data Type");
+				}
+
+			}
+
+		}
+
+		logger.debug("Map contains:" + map);
+		return map;
+	}
+
 	
 }
