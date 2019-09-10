@@ -19,7 +19,7 @@ import com.agile.util.GenericUtilities;
  * This PX 
  * -creates a DCO Object,
  * -sets DCO Workflow on DCO object,
- * -copies Description and Impact/Risk/Justification from eCR to DCO,
+ * -copies Description,change Analyst and Impact/Risk/Justification from eCR to DCO,
  * -adds DCO to the relationship tab of ECR
  *
  */
@@ -28,6 +28,7 @@ public class GenerateDCOFromECR implements ICustomAction {
 
 	static Logger logger = Logger.getLogger(GenerateDCOFromECR.class);
 	public static String awfMessagesListName = "AWFMessagesList";
+	public static String eCRToDCOAttributeIdsMappingListName = "ECRDCOAttributeIDsMappingList";
 
 	@Override
 	public ActionResult doAction(IAgileSession session, INode arg1, IDataObject dataObject) {
@@ -40,6 +41,8 @@ public class GenerateDCOFromECR implements ICustomAction {
 			// Get Agile list values
 			HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
+			HashMap<Object, Object> eCRToDCOAttributeIdsMappingList = new HashMap<Object, Object>();
+			eCRToDCOAttributeIdsMappingList = GenericUtilities.getAgileListValues(session, eCRToDCOAttributeIdsMappingListName);
 
 			// Get eCR Object
 			IChange eCR = (IChange) dataObject;
@@ -50,10 +53,18 @@ public class GenerateDCOFromECR implements ICustomAction {
 				String nextNumber = GenericUtilities.getNextAutoNumber(session,awfMessagesList.get("DCO_SUBCLASS_NAME").toString(),
 						awfMessagesList.get("DCO_AUTO_NUMBER").toString());
 				logger.debug("Next Autonmber is:" + nextNumber);
+				
+				//copy common attribute values from eCR to DCO
+				HashMap<Object, Object> map = new HashMap<Object, Object>();
+				map = GenericUtilities.copyAttrValuesFromSourceObjToTargetObj(eCR, eCRToDCOAttributeIdsMappingList, session, awfMessagesList.get("ECR_SUBCLASS_NAME").toString(),
+						awfMessagesList.get("DCO_SUBCLASS_NAME").toString());
+				
+				map.put(Integer.parseInt(awfMessagesList.get("NUM_ATTRID").toString()), nextNumber);
+				logger.debug("Map contains:" + map);
 
 				// Create DCO Object
 				IChange dco = (IChange) session.createObject(awfMessagesList.get("DCO_SUBCLASS_NAME").toString(),
-						nextNumber);
+						map);
 				logger.debug("DCO is:" + dco);
 
 				if (dco != null) {
@@ -62,28 +73,11 @@ public class GenerateDCOFromECR implements ICustomAction {
 					dco.setValue(Integer.parseInt(awfMessagesList.get("WORKFLOW_ATTRID").toString()),
 							awfMessagesList.get("DCO_WORKFLOW_NAME").toString());
 
-					// Get Description from eCR and set on DCO
-					String descriptionOfECR = (String) eCR
-							.getValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()));
-					logger.debug("Descripton of ECR:" + descriptionOfECR);
-					if (descriptionOfECR != null && !descriptionOfECR.equals("")) {
-						dco.setValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()),
-								descriptionOfECR);
-					}
-
-					// Get Impact/Risk/Justification from eCR and set on DCO
-					String impact = (String) eCR
-							.getValue(Integer.parseInt(awfMessagesList.get("IMPACT_ATTRID").toString()));
-					logger.debug("Impact/Risk/Justification of ECR:" + impact);
-					if (impact != null && !impact.equals("")) {
-						dco.setValue(Integer.parseInt(awfMessagesList.get("IMPACT_ATTRID").toString()), impact);
-					}
 					// Add dco to relationship tab of ECR
 					ITable relationshipTab = eCR.getTable(ChangeConstants.TABLE_RELATIONSHIPS);
 					if (relationshipTab != null) {
 						relationshipTab.createRow(dco);
-						result = dco.toString() + " " + awfMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString() + " "
-								+ eCR.toString();
+						result = String.format(awfMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString(), dco.toString(), eCR.toString());
 					}
 
 				} else {
