@@ -1,6 +1,7 @@
 package com.cepheid.awf;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,6 +31,7 @@ import com.agile.util.GenericUtilities;
  * @author Supriya 
  * Pre Event: This PX displays a exception message to user during Status change from Pending to review
  *     -if any Impact assessment attributes are not filled on eCR 
+ *     -If any Data check list attribute is filled as No
  *     -if affected item is not added
  *     -if one or more disposition attributes on affected items is not filled
  *     -if phase is not filled on affected items
@@ -42,7 +44,7 @@ public class ValidateAWF implements IEventAction {
 	static Logger logger = Logger.getLogger(ValidateAWF.class);
 	ActionResult actionResult = new ActionResult();
 
-	public static String attributesMappingOnECRAndAWFListName = "ECRAWFAttributeIDsMappingList";
+	public static String eCRToAWFAttributeIdsMappingListName = "ECRAWFAttributeIDsMappingList";
 	public static String awfMessagesListName = "AWFMessagesList";
 
 	@Override
@@ -53,10 +55,10 @@ public class ValidateAWF implements IEventAction {
 			GenericUtilities.initializeLogger(session);
 
 			// Get Agile List Values
-			HashMap<Object, Object> attributesMappingOnECRAndAWFList = new HashMap<Object, Object>();
+			HashMap<Object, Object> eCRToAWFAttributeIdsMappingList = new HashMap<Object, Object>();
 			HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
-			attributesMappingOnECRAndAWFList = GenericUtilities.getAgileListValues(session,
-					attributesMappingOnECRAndAWFListName);
+			eCRToAWFAttributeIdsMappingList = GenericUtilities.getAgileListValues(session,
+					eCRToAWFAttributeIdsMappingListName);
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 			IWFChangeStatusEventInfo info = (IWFChangeStatusEventInfo) eventInfo;
 
@@ -69,7 +71,7 @@ public class ValidateAWF implements IEventAction {
 				// Get ECR Object on AWF
 				String strECR = GenericUtilities.getSingleListAttributeValue(AWF,
 						awfMessagesList.get("ECR_ATTRID").toString());
-				logger.debug("ECR is:" + strECR);
+				logger.debug("eCR attribute value is:" + strECR);
 
 				IChange eCR = null;
 				if (strECR != null) {
@@ -84,157 +86,196 @@ public class ValidateAWF implements IEventAction {
 					if (eventInfo.getEventTriggerType() == EventConstants.EVENT_TRIGGER_PRE) {
 
 						// Get eCR Impact assessment attribute Values
-						HashMap<Object, Object> eCRAttrValues = new HashMap<Object, Object>();
-						eCRAttrValues = GenericUtilities.getIAAttributeValues(eCR, attributesMappingOnECRAndAWFList);
-						logger.debug("eCRAttrValues are:" + eCRAttrValues);
+						HashMap<Object, Object> impactAssessmentAttributeValues = new HashMap<Object, Object>();
+						impactAssessmentAttributeValues = GenericUtilities.getImpactAssessmentAttrValues(session,eCR, eCRToAWFAttributeIdsMappingList);
+						logger.debug("Impact assessment attribute values are:" + impactAssessmentAttributeValues);
 
 						// Get count of empty Impact assessment attribute Values on associated eCR
 						int countOfEmptyAttrs = 0;
-						countOfEmptyAttrs = GenericUtilities.getCountOfIAAttributes(
-								awfMessagesList.get("NULL").toString(), eCRAttrValues, session);
+						countOfEmptyAttrs = GenericUtilities.getCountOfImpactAssessmentAttributes(
+								awfMessagesList.get("NULL").toString(), impactAssessmentAttributeValues, session);
 						logger.debug("count of empty Attributes is:" + countOfEmptyAttrs);
-
-						// if count>0,throw exception,else validate affected items
+						
+						// if count>0,throw exception
 						if (countOfEmptyAttrs > 0) {
 							actionResult = new ActionResult(ActionResult.EXCEPTION,
-									new Exception(awfMessagesList.get("VALUES_NOT_FILLED1").toString() + " "
-											+ eCR.toString() + "."
-											+ awfMessagesList.get("VALUES_NOT_FILLED3").toString()));
-						} else {
+									new Exception(String.format(awfMessagesList.get("VALUES_NOT_FILLED_DURING_STATUS_CHANGE_OF_AWF").toString(),eCR.toString())));
+						} 
+						else {
 
-							// If no affected items are added,throw exception
-							ITable affectedItems = AWF.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
-							if (affectedItems != null) {
-								logger.debug("Affected items size is:" + affectedItems.size());
-								if (affectedItems.size() == 0) {
-									actionResult = new ActionResult(ActionResult.EXCEPTION,
-											new Exception(awfMessagesList.get("AFFECTED_ITEMS_MANDATORY").toString()));
+							// Get DataChecklist attribute Ids
+							String[] dataCheckListAttrIds = awfMessagesList.get("DATACHECKLIST_ATTRIDS").toString()
+									.split(",");
+							logger.debug("Data check list attribute array contains:"+Arrays.toString(dataCheckListAttrIds));
 
-								} else {
+							String dataCheckListAttrValue = "";
+							boolean dataCheckListFlag = false;
 
-									// Get Subclasses under PARTS class
-									ArrayList<IAgileClass> partsSubclassesList = new ArrayList<IAgileClass>();
-									IAgileClass[] partsSubClasses = session.getAdminInstance()
-											.getAgileClass(ItemConstants.CLASS_PARTS_CLASS).getSubclasses();
-									logger.debug("Sub classes Length:" + partsSubClasses.length);
-									int i = 0;
-									while (i < partsSubClasses.length) {
-										if (partsSubClasses[i] != null) {
-											partsSubclassesList.add(partsSubClasses[i]);
-											i++;
+							// Iterate through each attribute Id and fetch data check list value
+							for (String attrId : dataCheckListAttrIds) {
+
+								dataCheckListAttrValue = GenericUtilities.getSingleListAttributeValue(AWF, attrId);
+								logger.debug(
+										"Data Check list attribute Value of "+attrId+ " is:" + dataCheckListAttrValue);
+
+								// If any value is filled as No,set the flag to true
+								if (dataCheckListAttrValue != null && !dataCheckListAttrValue.equals("")
+										&& dataCheckListAttrValue
+												.equalsIgnoreCase(awfMessagesList.get("NO").toString())) {
+									dataCheckListFlag = true;
+									break;
+								}
+							}
+							
+							//If any value is filled as No,throw exception
+							if (dataCheckListFlag == true) {
+								actionResult = new ActionResult(ActionResult.EXCEPTION,
+										new Exception(awfMessagesList.get("DATA_CHECKLIST_MSG").toString()));
+							} else {
+
+								// If no affected items are added,throw exception
+								ITable affectedItems = AWF.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
+								if (affectedItems != null) {
+									logger.debug("Affected items size is:" + affectedItems.size());
+									if (affectedItems.size() == 0) {
+										actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(
+												awfMessagesList.get("AFFECTED_ITEMS_MANDATORY").toString()));
+
+									} else {
+
+										// Get Subclasses under PARTS class
+										ArrayList<IAgileClass> partsSubclassesList = new ArrayList<IAgileClass>();
+										IAgileClass[] partsSubClasses = session.getAdminInstance()
+												.getAgileClass(ItemConstants.CLASS_PARTS_CLASS).getSubclasses();
+										logger.debug("Sub classes Length:" + partsSubClasses.length);
+										int i = 0;
+										while (i < partsSubClasses.length) {
+											if (partsSubClasses[i] != null) {
+												partsSubclassesList.add(partsSubClasses[i]);
+												i++;
+											}
 										}
-									}
-									logger.debug("Parts Subclasses List:" + partsSubclassesList);
+										logger.debug("Parts Subclasses List:" + partsSubclassesList);
 
-									HashSet<String> itemsList = new HashSet<String>();
-									HashSet<IItem> itemsWithoutPhase = new HashSet<IItem>();
-									HashSet<IItem> obsoleteRevItemsList = new HashSet<IItem>();
-									String stock = "";
-									String onOrder = "";
-									String workInProgress = "";
-									String finishedGoods = "";
-									String field = "";
-									String newRev = "";
-									String lifeCyclePhase = "";
-									IRow row = null;
-									String strItem = "";
-									IItem item = null;
+										HashSet<String> itemsList = new HashSet<String>();
+										HashSet<IItem> itemsWithoutPhase = new HashSet<IItem>();
+										HashSet<IItem> obsoleteRevItemsList = new HashSet<IItem>();
+										String stock = "";
+										String onOrder = "";
+										String workInProgress = "";
+										String finishedGoods = "";
+										String field = "";
+										String newRev = "";
+										String lifeCyclePhase = "";
+										IRow row = null;
+										String strItem = "";
+										IItem item = null;
 
-									// Iterate through all affected items
-									@SuppressWarnings("unchecked")
-									Iterator<IItem> it = affectedItems.iterator();
-									while (it.hasNext()) {
-										row = (IRow) it.next();
-										if (row != null) {
-											strItem = (String) row.getValue(Integer.parseInt(
-													awfMessagesList.get("AFFECTEDITEM_NUM_ATTRID").toString()));
-											logger.debug("Item is:" + strItem);
+										// Iterate through all affected items
+										@SuppressWarnings("unchecked")
+										Iterator<IItem> it = affectedItems.iterator();
+										while (it.hasNext()) {
+											row = (IRow) it.next();
+											if (row != null) {
+												strItem = (String) row.getValue(Integer.parseInt(
+														awfMessagesList.get("AFFECTEDITEM_NUM_ATTRID").toString()));
+												logger.debug("Item is:" + strItem);
 
-											if (strItem != null && !strItem.equals("")) {
-												item = (IItem) session.getObject(ItemConstants.CLASS_ITEM_BASE_CLASS,
-														strItem);
-												logger.debug("Item is:" + item);
-												logger.debug("Item agileclass is:" + item.getAgileClass());
-											}
-
-											// If the affected item belongs to PARTS class, fetch disposition fields
-											if (partsSubclassesList.contains(item.getAgileClass())) {
-												stock = getSingleListAttributeValueFromAffectedItems(row,
-														awfMessagesList.get("AFFECTEDITEM_STOCK_ATTRID").toString());
-												logger.debug("Stock is:" + stock);
-												onOrder = getSingleListAttributeValueFromAffectedItems(row,
-														awfMessagesList.get("AFFECTEDITEM_ONORDER_ATTRID").toString());
-												logger.debug("onOrder is:" + onOrder);
-												workInProgress = getSingleListAttributeValueFromAffectedItems(row, awfMessagesList
-																.get("AFFECTEDITEM_WORKINPROGRESS_ATTRID").toString());
-												logger.debug("workInProgress is:" + workInProgress);
-												finishedGoods = getSingleListAttributeValueFromAffectedItems(row, awfMessagesList
-																.get("AFFECTEDITEM_FINISHEDGOODS_ATTRID").toString());
-												logger.debug("finishedGoods is:" + finishedGoods);
-												field = getSingleListAttributeValueFromAffectedItems(row,
-														awfMessagesList.get("AFFECTEDITEM_FIELD_ATTRID").toString());
-												logger.debug("field is:" + field);
-												if (stock == null || onOrder == null || workInProgress == null
-														|| finishedGoods == null || field == null) {
-													itemsList.add(strItem);
+												if (strItem != null && !strItem.equals("")) {
+													item = (IItem) session
+															.getObject(ItemConstants.CLASS_ITEM_BASE_CLASS, strItem);
+													logger.debug("Item is:" + item);
+													logger.debug("Item agileclass is:" + item.getAgileClass());
 												}
-											}
-
-											// Get New Rev and Lifecycle Phase
-											newRev = (String) row.getValue(Integer.parseInt(
-													awfMessagesList.get("AFFECTEDITEM_NEWREV_ATTRID").toString()));
-											logger.debug("New Rev is:" + newRev);
-											if (newRev != null && !newRev.equals("")) {
-												lifeCyclePhase = getSingleListAttributeValueFromAffectedItems(row, awfMessagesList
-																.get("AFFECTEDITEM_LIFECYCLEPHASE_ATTRID").toString());
-												logger.debug("LifeCycle Phase:" + lifeCyclePhase);
-
-												if (lifeCyclePhase != null && !lifeCyclePhase.equals("")) {
-													if (newRev.startsWith(
-															awfMessagesList.get("NEWREV_OBSOLETE_PREFIX").toString())) {
-														if (!lifeCyclePhase.equalsIgnoreCase(awfMessagesList
-																.get("OBSOLETE_LIFECYCLE_PHASE").toString())) {
-															obsoleteRevItemsList.add(item);
+												
+												if(item!=null) {
+													// If the affected item belongs to PARTS class, fetch disposition fields
+													if (partsSubclassesList.contains(item.getAgileClass())) {
+														stock = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_STOCK_ATTRID")
+																		.toString());
+														logger.debug("Stock is:" + stock);
+														onOrder = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_ONORDER_ATTRID")
+																		.toString());
+														logger.debug("onOrder is:" + onOrder);
+														workInProgress = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_WORKINPROGRESS_ATTRID")
+																		.toString());
+														logger.debug("workInProgress is:" + workInProgress);
+														finishedGoods = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_FINISHEDGOODS_ATTRID")
+																		.toString());
+														logger.debug("finishedGoods is:" + finishedGoods);
+														field = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_FIELD_ATTRID")
+																		.toString());
+														logger.debug("field is:" + field);
+														if (stock == null || onOrder == null || workInProgress == null
+																|| finishedGoods == null || field == null) {
+															itemsList.add(strItem);
 														}
 													}
-												} else {
-													itemsWithoutPhase.add(item);
+
+													// Get New Rev and Lifecycle Phase
+													newRev = (String) row.getValue(Integer.parseInt(
+															awfMessagesList.get("AFFECTEDITEM_NEWREV_ATTRID").toString()));
+													logger.debug("New Rev is:" + newRev);
+													if (newRev != null && !newRev.equals("")) {
+														lifeCyclePhase = getSingleListAttributeValueFromAffectedItems(row,
+																awfMessagesList.get("AFFECTEDITEM_LIFECYCLEPHASE_ATTRID")
+																		.toString());
+														logger.debug("LifeCycle Phase:" + lifeCyclePhase);
+
+														if (lifeCyclePhase != null && !lifeCyclePhase.equals("")) {
+															if (newRev.startsWith(awfMessagesList
+																	.get("NEWREV_OBSOLETE_PREFIX").toString())) {
+																if (!lifeCyclePhase.equalsIgnoreCase(awfMessagesList
+																		.get("OBSOLETE_LIFECYCLE_PHASE").toString())) {
+																	obsoleteRevItemsList.add(item);
+																}
+															}
+														} else {
+															itemsWithoutPhase.add(item);
+														}
+
+													}
 												}
 
+												
+
 											}
+										}
+										logger.debug("Items list is:" + itemsList);
+										logger.debug("Items without Phase list :" + itemsWithoutPhase);
+										logger.debug("Obsolete revision items whose phase is not obsolete :" + obsoleteRevItemsList);
+
+										// If disposition fields are empty,throw exception
+										if (itemsList.size() > 0) {
+											actionResult = new ActionResult(ActionResult.EXCEPTION, 
+													new Exception(String.format(awfMessagesList.get("DISPOSITION_FIELDS_NOT_FILLED_MSG").toString(), itemsList)));
+										}
+										// If any affected item's phase is not filled,throw exception
+										else if (itemsWithoutPhase.size() > 0) {
+											actionResult = new ActionResult(ActionResult.EXCEPTION,
+													new Exception(String.format(awfMessagesList.get("PHASE_NOT_FILLED_MSG").toString(), itemsWithoutPhase)));
+														
+										}
+										// If any affected item's new Rev starts with OBS and phase is not updated to
+										// Obsolete,throw exception
+										else if (obsoleteRevItemsList.size() > 0) {
+											actionResult = new ActionResult(ActionResult.EXCEPTION, 
+													new Exception(String.format(awfMessagesList.get("UPDATE_PHASE_TO_OBSOLETE_MSG").toString(), obsoleteRevItemsList)));
+										} else {
+											actionResult = new ActionResult(ActionResult.STRING,
+													awfMessagesList.get("VALIDATION_SUCCESS").toString());
 
 										}
 									}
-									logger.debug("Items list is:" + itemsList);
 
-									// If disposition fields are empty,throw exception
-									if (itemsList.size() > 0) {
-										actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(
-												awfMessagesList.get("DISPOSITION_FIELDS_NOT_FILLED_MSG").toString()
-														+ " " + itemsList));
-									}
-									// If any affected item's phase is not filled,throw exception
-									else if (itemsWithoutPhase.size() > 0) {
-										actionResult = new ActionResult(ActionResult.EXCEPTION,
-												new Exception(awfMessagesList.get("PHASE_NOT_FILLED_MSG").toString()
-														+ " " + itemsWithoutPhase));
-									}
-									// If any affected item's new Rev starts with OBS and phase is not updated to
-									// Obsolete,throw exception
-									else if (obsoleteRevItemsList.size() > 0) {
-										actionResult = new ActionResult(ActionResult.EXCEPTION,
-												new Exception(
-														awfMessagesList.get("UPDATE_PHASE_TO_OBSOLETE_MSG").toString()
-																+ " " + obsoleteRevItemsList));
-									} else {
-										actionResult = new ActionResult(ActionResult.STRING,
-												awfMessagesList.get("VALIDATION_SUCCESS").toString());
-
-									}
 								}
 
 							}
-
 						}
 					}//On post event,add eCR to the relationship tab of AWF 
 					else {
