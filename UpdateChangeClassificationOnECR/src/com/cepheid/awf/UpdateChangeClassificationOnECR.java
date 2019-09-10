@@ -31,7 +31,7 @@ public class UpdateChangeClassificationOnECR implements IEventAction {
 	static Logger logger = Logger.getLogger(UpdateChangeClassificationOnECR.class);
 	ActionResult actionResult = new ActionResult();
 
-	public static String attributesMappingOnECRAndAWFListName = "ECRAWFAttributeIDsMappingList";
+	public static String eCRToAWFAttributeIdsMappingListName = "ECRAWFAttributeIDsMappingList";
 	public static String awfMessagesListName = "AWFMessagesList";
 
 	@Override
@@ -40,12 +40,12 @@ public class UpdateChangeClassificationOnECR implements IEventAction {
 			// Initialize logger
 			GenericUtilities.initializeLogger(session);
 
-			HashMap<Object, Object> attributesMappingOnECRAndAWFList = new HashMap<Object, Object>();
+			HashMap<Object, Object> eCRToAWFAttributeIdsMappingList = new HashMap<Object, Object>();
 			HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
 			
 			// Get Agile List Values
-			attributesMappingOnECRAndAWFList = GenericUtilities.getAgileListValues(session,
-					attributesMappingOnECRAndAWFListName);
+			eCRToAWFAttributeIdsMappingList = GenericUtilities.getAgileListValues(session,
+					eCRToAWFAttributeIdsMappingListName);
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 
 			IUpdateTitleBlockEventInfo info = (IUpdateTitleBlockEventInfo) eventInfo;
@@ -57,17 +57,17 @@ public class UpdateChangeClassificationOnECR implements IEventAction {
 			if (eCR != null) {
 				String result = "";
 
-				// Get Change Impact assessment attribute Ids and values
-				HashMap<Object, Object> assessmentAttrValues = new HashMap<Object, Object>();
-				assessmentAttrValues = GenericUtilities.getIAAttributeValues(eCR, attributesMappingOnECRAndAWFList);
-				logger.debug("Assessment Attribute Values are:" + assessmentAttrValues);
+				// Get Change Impact assessment attribute values
+				HashMap<Object, Object> impactAssessmentAttributeValues = new HashMap<Object, Object>();
+				impactAssessmentAttributeValues = GenericUtilities.getImpactAssessmentAttrValues(session,eCR, eCRToAWFAttributeIdsMappingList);
+				logger.debug("Impact Assessment Attribute Values are:" + impactAssessmentAttributeValues);
 
 				// Get Assessment attribute IDs into arraylist
 				List<Integer> assessmentAttrIds = new ArrayList<Integer>();
-				for (Object key : assessmentAttrValues.keySet()) {
+				for (Object key : impactAssessmentAttributeValues.keySet()) {
 					assessmentAttrIds.add(Integer.parseInt(key.toString()));
 				}
-				logger.debug("Assesment attribute ids are:" + assessmentAttrIds);
+				logger.debug("Impact Assesment attribute ids are:" + assessmentAttrIds);
 
 				// Get Dirty attribute IDs
 				int i = 0;
@@ -92,10 +92,10 @@ public class UpdateChangeClassificationOnECR implements IEventAction {
 					int countOfEmptyAttrs = 0;
 					int countOfAttrsWithYes = 0;
 
-					countOfAttrsWithYes = GenericUtilities.getCountOfIAAttributes(
-							awfMessagesList.get("YES").toString(), assessmentAttrValues, session);
-					countOfEmptyAttrs = GenericUtilities.getCountOfIAAttributes(
-							awfMessagesList.get("NULL").toString(), assessmentAttrValues, session);
+					countOfAttrsWithYes = GenericUtilities.getCountOfImpactAssessmentAttributes(
+							awfMessagesList.get("YES").toString(), impactAssessmentAttributeValues, session);
+					countOfEmptyAttrs = GenericUtilities.getCountOfImpactAssessmentAttributes(
+							awfMessagesList.get("NULL").toString(), impactAssessmentAttributeValues, session);
 
 					logger.debug("count of empty Attributes is:" + countOfEmptyAttrs);
 					logger.debug("count of yes Attributes is:" + countOfAttrsWithYes);
