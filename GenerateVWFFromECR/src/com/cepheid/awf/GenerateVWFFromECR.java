@@ -19,7 +19,7 @@ import com.agile.util.GenericUtilities;
  * This PX 
  * -creates a VWF Object,
  * -sets VWF-Validation Workflow on VWF object, 
- * -copies Description and Impact/Risk/Justification from eCR to VWF,
+ * -copies Description,change analyst and Impact/Risk/Justification from eCR to VWF,
  * -adds VWF to the relationship tab of ECR
  *
  */
@@ -28,6 +28,7 @@ public class GenerateVWFFromECR implements ICustomAction {
 
 	static Logger logger = Logger.getLogger(GenerateVWFFromECR.class);
 	public static String awfMessagesListName = "AWFMessagesList";
+	public static String eCRToVWFAttributeIdsMappingListName = "ECRVWFAttributeIDsMappingList";
 
 	@Override
 	public ActionResult doAction(IAgileSession session, INode arg1, IDataObject dataObject) {
@@ -39,7 +40,9 @@ public class GenerateVWFFromECR implements ICustomAction {
 			// Get Agile list values
 			HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
-
+			HashMap<Object, Object> eCRToVWFAttributeIdsMappingList = new HashMap<Object, Object>();
+			eCRToVWFAttributeIdsMappingList = GenericUtilities.getAgileListValues(session, eCRToVWFAttributeIdsMappingListName);
+			
 			// Get eCR Object
 			IChange eCR = (IChange) dataObject;
 			logger.debug("ECR is:" + eCR);
@@ -47,12 +50,22 @@ public class GenerateVWFFromECR implements ICustomAction {
 			if (eCR != null) {
 				
 				// Get Next number from Auto Number
-				String nextNumber = GenericUtilities.getNextAutoNumber(session,awfMessagesList.get("VWF_SUBCLASS_NAME").toString(),
+				String nextNumber = GenericUtilities.getNextAutoNumber(session,
+						awfMessagesList.get("VWF_SUBCLASS_NAME").toString(),
 						awfMessagesList.get("VWF_AUTO_NUMBER").toString());
 				logger.debug("Next Autonmber is:" + nextNumber);
-				
-				IChange vwf = (IChange) session.createObject(awfMessagesList.get("VWF_SUBCLASS_NAME").toString(),
-						nextNumber);
+
+				// copy common attribute values from eCR to VWF
+				HashMap<Object, Object> map = new HashMap<Object, Object>();
+				map = GenericUtilities.copyAttrValuesFromSourceObjToTargetObj(eCR, eCRToVWFAttributeIdsMappingList,
+						session, awfMessagesList.get("ECR_SUBCLASS_NAME").toString(),
+						awfMessagesList.get("VWF_SUBCLASS_NAME").toString());
+
+				map.put(Integer.parseInt(awfMessagesList.get("NUM_ATTRID").toString()), nextNumber);
+				logger.debug("Map contains:" + map);
+
+				// Create VWF Object
+				IChange vwf = (IChange) session.createObject(awfMessagesList.get("VWF_SUBCLASS_NAME").toString(), map);
 				logger.debug("VWF is:" + vwf);
 
 				if (vwf != null) {
@@ -61,29 +74,11 @@ public class GenerateVWFFromECR implements ICustomAction {
 					vwf.setValue(Integer.parseInt(awfMessagesList.get("WORKFLOW_ATTRID").toString()),
 							awfMessagesList.get("VWF_WORKFLOW_NAME").toString());
 
-					// Get Description from eCR and set on VWF
-					String descriptionOfECR = (String) eCR
-							.getValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()));
-					logger.debug("Descripton of ECR:" + descriptionOfECR);
-					if (descriptionOfECR != null && !descriptionOfECR.equals("")) {
-						vwf.setValue(Integer.parseInt(awfMessagesList.get("DESCRIPTION_ATTRID").toString()),
-								descriptionOfECR);
-					}
-
-					// Get Impact/Risk/Justification from eCR and set on VWF
-					String impact = (String) eCR
-							.getValue(Integer.parseInt(awfMessagesList.get("IMPACT_ATTRID").toString()));
-					logger.debug("Impact/Risk/Justification of ECR:" + impact);
-					if (impact != null && !impact.equals("")) {
-						vwf.setValue(Integer.parseInt(awfMessagesList.get("IMPACT_ATTRID").toString()), impact);
-					}
-
 					// Add vwf to relationship tab of ECR
 					ITable relationshipTab = eCR.getTable(ChangeConstants.TABLE_RELATIONSHIPS);
 					if (relationshipTab != null) {
 						relationshipTab.createRow(vwf);
-						result = vwf.toString() + " " + awfMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString() + " "
-								+ eCR.toString();
+						result = String.format(awfMessagesList.get("OBJ_CREATED_ADDED_RELTAB").toString(), vwf.toString(), eCR.toString());
 					}
 
 				} else {

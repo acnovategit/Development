@@ -6,11 +6,11 @@
 			<attribute name="owner.project.facets" value="java"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="D:/Project/APIJars/AgileAPI.jar"/>
-	<classpathentry kind="lib" path="D:/Project/APIJars/log4j-1.2.17.jar"/>
-	<classpathentry kind="lib" path="D:/Project/APIJars/log4j-api.jar"/>
-	<classpathentry kind="lib" path="D:/Project/APIJars/log4j-core.jar"/>
-	<classpathentry kind="lib" path="D:/Project/APIJars/pxapi.jar"/>
-	<classpathentry kind="lib" path="D:/Project/Jars/GenericUtilities.jar"/>
+	<classpathentry kind="lib" path="D:/Work/APIJars/AgileAPI.jar"/>
+	<classpathentry kind="lib" path="D:/Work/APIJars/log4j-1.2.17.jar"/>
+	<classpathentry kind="lib" path="D:/Work/APIJars/log4j-api.jar"/>
+	<classpathentry kind="lib" path="D:/Work/APIJars/log4j-core.jar"/>
+	<classpathentry kind="lib" path="D:/Work/APIJars/pxapi.jar"/>
+	<classpathentry kind="lib" path="D:/Work/Jars/GenericUtilities.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
