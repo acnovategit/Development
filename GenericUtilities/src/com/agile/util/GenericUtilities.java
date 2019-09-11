@@ -649,7 +649,16 @@ public class GenericUtilities {
 			//Create message
 			MimeMessage message = new MimeMessage(session);
 			message.setFrom(new InternetAddress(addressFrom));
-			message.setRecipients(RecipientType.TO, addressTo);
+			String[] recipientList = addressTo.split(",");
+			 InternetAddress[] recipientAddress = new InternetAddress[recipientList.length];
+			 int counter = 0;
+			 for (String recipientName : recipientList) {
+			     recipientAddress[counter] = new InternetAddress(recipientName.trim());
+				 logger.info("Recepient Name: "+recipientName.trim());
+			     counter++;
+			 }
+			logger.info("Recepient List contains "+counter+"Addresses");
+			message.setRecipients(RecipientType.TO, recipientAddress);
 			message.setSubject(subject);
 			message.setContent(html, "text/html");
 			 
