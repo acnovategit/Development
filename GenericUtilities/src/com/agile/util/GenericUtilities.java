@@ -2,7 +2,10 @@ package com.agile.util;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -14,6 +17,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
 import javax.mail.MessagingException;
@@ -493,7 +497,7 @@ public class GenericUtilities {
 	 * @throws APIException
 	 */
 	@SuppressWarnings("unchecked")
-	public static HashMap<Object, Object> getPendingSignOffDetails(IChange awf, HashMap<Object, Object> awfMessagesList)
+	public static HashMap<Object, Object> getPendingSignOffDetails(IChange awf, HashMap<Object, Object> awfMessagesList, String sStatus)
 			throws APIException {
 
 		// Fetch approvers based on status
@@ -534,7 +538,7 @@ public class GenericUtilities {
 
 					// If status is review
 					if (statusCode.equalsIgnoreCase(awfMessagesList.get("CURRENT_PROCESS").toString())
-							&& workflowState.equalsIgnoreCase(awfMessagesList.get("AWF_REVIEW_STATUS").toString())) {
+							&& workflowState.equalsIgnoreCase(awfMessagesList.get(sStatus).toString())) {
 
 						// If there is any pending approver,set approvalPending to True and add pending
 						// approver to pendingApprovers list to send notification
@@ -769,5 +773,127 @@ public class GenericUtilities {
 		return map;
 	}
 
+	
+
+	
+	/**
+	 * @param mapError
+	 * @param sECONumber
+	 * @return
+	 */
+	public static String sCreateHTMLtoSend(Map<String,List<String>> mapError, String sECONumber)
+	{
+		
+		 String html="<html><head>"
+                 + "<title>"+"AWF "+sECONumber+"</title>"
+                 + "</head>"+"<LINK REL='stylesheet' HREF='stylesheet/fac_css.css' TYPE='text/css'>"
+                 + "<body>"
+                 +"<table width='900' cellpadding='0' cellspacing='0' border='0'>"
+                 +"<tr><td class ='text12' width='100%'><br>Issues while update Effectivity Date</td></tr><tr>"
+                 +"<td height='5'></td></tr>"
+                 +"<tr><td></td></tr>"
+                 +"<tr><td height='5'></td></tr>"
+                 +"<tr><td><table border='1' width='800' cellpadding='2' cellspacing='1' bgColor='#808080' style='border-collapse: collapse' bordercolor='#EBDA2A' align='left'>"
+                 +"<tr bgColor=#808080 class='centerheading' align='center'>"
+                         +"<td width='30' style='color: #FFFFFF;'><b>S.No.</b></td>"
+                         +"<td width='35' style='color: #FFFFFF;'><b>Part</b></td>"
+                         +"<td width='35' style='color: #FFFFFF;'><b>Message</b></td>"
+                    
+                     
+                + "</tr>";
+		
+ 	 		
+		  int i=1;
+          for (Map.Entry<String,List<String>> entry : mapError.entrySet())
+       	{
+            List<String> check=entry.getValue();
+	  			Iterator<String> it = check.iterator();
+	  			while(it.hasNext()){
+	  			
+          	  html=html+"<tr align='center' bgColor=#FFFFFF>"+"<td width='30' style='color: #000000;'>"+i+"</b></td>"
+          	  +"<td width='30' style='color: #000000;'>"+entry.getKey()+"</td>"
+          	  +"<td width='60' style='color: #000000;'>"+it.next()+"</td>";
+              
+          	  i++;
+	  				}
+       		}
+                 html=html  +"</table>"
+              +"</td>"
+      +"</tr>"
+      +"<tr>"
+           +"<td height='6'></td>"
+      +"</tr>"
+    
+      +"<tr>"
+           +"<td height='15'></td>"
+      +"</tr>"
+      
+      +"</table>"
+      +"</body></html>";
+		  
+		 
+		  
+		  return html;
+		
+		
+	}
+	
+	
+	
+		
+	/**
+	 * @param inStream
+	 * @param fileName
+	 * @param filePath
+	 * @return
+	 * @throws APIException
+	 * @throws IOException
+	 */
+	public static boolean bCheckFile(InputStream inStream, String fileName, String filePath) throws APIException, IOException
+	{
+		File file;
+		OutputStream outStream = null;
+	
+	
+			file=getAttachmentFile(inStream, outStream,fileName,filePath);
+			logger.debug("getAttachmentFile method executed successfully");
+		
+		if(file.isFile())
+			return true;
+	
+		return false;
+	}
+	/**
+	 * Gets the file attachment from the File input stream, output stream
+	 * @param inStream
+	 * @param outStream
+	 * @param fileName
+	 * @param filePath
+	 * @return
+	 * @throws APIException
+	 * @throws IOException
+	 */
+	public static File getAttachmentFile( InputStream inStream, OutputStream outStream,String fileName, String filePath)
+			throws APIException, IOException{
+		int read = 0;
+		byte[] bytes = new byte[1024];
+
+
+		filePath=filePath+fileName;
+		File targetFile = new File(filePath);
+		outStream = new FileOutputStream(targetFile);
+
+		while ((read = inStream.read(bytes)) != -1) {
+			outStream.write(bytes, 0, read);
+			//logger.info(bytes);
+		}
+
+		outStream.close();
+		return targetFile;
+	}
+	
+	
+
+	
 	
 }
