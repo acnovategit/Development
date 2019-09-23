@@ -49,6 +49,7 @@ import com.agile.api.ISignoffReviewer;
 import com.agile.api.IStatus;
 import com.agile.api.ITable;
 import com.agile.api.IUser;
+import com.agile.api.IUserGroup;
 import com.agile.api.IWorkflow;
 import com.agile.api.UserConstants;
 import com.agile.api.WorkflowConstants;
@@ -499,6 +500,7 @@ public class GenericUtilities {
 	@SuppressWarnings("unchecked")
 	public static HashMap<Object, Object> getPendingSignOffDetails(IChange awf, HashMap<Object, Object> awfMessagesList, String sStatus)
 			throws APIException {
+		logger.info("Getting sign off approvers");
 
 		// Fetch approvers based on status
 		ISignoffReviewer[] approvers = awf.getReviewers(awf.getStatus(), WorkflowConstants.USER_APPROVER);
@@ -538,7 +540,7 @@ public class GenericUtilities {
 
 					// If status is review
 					if (statusCode.equalsIgnoreCase(awfMessagesList.get("CURRENT_PROCESS").toString())
-							&& workflowState.equalsIgnoreCase(awfMessagesList.get(sStatus).toString())) {
+							&& workflowState.equalsIgnoreCase(sStatus)) {
 
 						// If there is any pending approver,set approvalPending to True and add pending
 						// approver to pendingApprovers list to send notification
@@ -781,7 +783,7 @@ public class GenericUtilities {
 	 * @param sECONumber
 	 * @return
 	 */
-	public static String sCreateHTMLtoSend(Map<String,List<String>> mapError, String sECONumber)
+	public static String sCreateHTMLtoSend(Map<String,List<String>> mapError, String sECONumber,String sSubject)
 	{
 		
 		 String html="<html><head>"
@@ -789,7 +791,7 @@ public class GenericUtilities {
                  + "</head>"+"<LINK REL='stylesheet' HREF='stylesheet/fac_css.css' TYPE='text/css'>"
                  + "<body>"
                  +"<table width='900' cellpadding='0' cellspacing='0' border='0'>"
-                 +"<tr><td class ='text12' width='100%'><br>Issues while update Effectivity Date</td></tr><tr>"
+                 +"<tr><td class ='text12' width='100%'><br>" + sSubject + "</td></tr><tr>"
                  +"<td height='5'></td></tr>"
                  +"<tr><td></td></tr>"
                  +"<tr><td height='5'></td></tr>"
@@ -892,8 +894,235 @@ public class GenericUtilities {
 		return targetFile;
 	}
 	
+	/**
+	 * This method iterates through the list of users and returns the list of users who does not have the role which is passed as argument to this method.
+	 * @param session
+	 * @param users
+	 * @param role
+	 * @return
+	 * @throws NumberFormatException
+	 * @throws APIException
+	 */
 	
+	@SuppressWarnings("unchecked")
+	public static HashSet<IUser> getUsersWithoutRole(IAgileSession session, HashSet<IUser> users, String role)
+			throws NumberFormatException, APIException {
 
+		// Get Agile List
+		awfMessagesList = getAgileListValues(session, awfMessagesListName);
+
+		HashSet<IUser> usersWithoutRole = new HashSet<IUser>();
+		Iterator<IUser> userIterator = users.iterator();
+		IUser user = null;
+		ArrayList<String> userRoles = new ArrayList<String>();
+		ITable userGroupTable = null;
+		Iterator<IUserGroup> userGroupTableIterator = null;
+		IUserGroup userGroup = null;
+		ArrayList<String> userGroupRoles = new ArrayList<String>();
+
+		// Iterate through the list of users
+		while (userIterator.hasNext()) {
+
+			//Get each user
+			user = userIterator.next();
+
+			if (user != null) {
+				boolean hasRole = false;
+				logger.debug("Boolean variable hasRole initialized to " + hasRole + " for user " + user);
+
+				// Get Roles of user
+				userRoles = GenericUtilities.getMultiListAttributeValue(user,
+						awfMessagesList.get("USER_ROLES_ATTRID").toString());
+				logger.debug("Roles assigned to the user " + user + " are: " + userRoles);
+
+				//If user has the role,set the boolean value 'hasRole' to true
+				if (userRoles.size() > 0 && userRoles.contains(role)) {
+
+					hasRole = true;
+					logger.debug("Boolean variable hasRole is set to " + hasRole + " for User " + user);
+				} 
+				//If the user doesnt have the role assigned,check whether any one of the usergroups assigned to him has the role
+				else {
+
+					userGroupTable = user.getTable(UserConstants.TABLE_USERGROUP);
+
+					if (userGroupTable != null) {
+						userGroupTableIterator = userGroupTable.getReferentIterator();
+
+						//Iterate through the usergroups
+						Loop: while (userGroupTableIterator.hasNext()) {
+
+							userGroup = userGroupTableIterator.next();
+							logger.debug("User Group name is:" + userGroup);
+							
+							if(userGroup!=null) {
+								logger.debug("Class name of User Group " + userGroup + " is:" + userGroup.getAgileClass());
+
+								if (userGroup.getAgileClass() != null) {
+									// UserGroup table contains both UserGroups and Functional Teams.We need only
+									// UserGroups
+									if (userGroup.getAgileClass().toString()
+											.equalsIgnoreCase(awfMessagesList.get("USER_GROUP_SUBCLASS").toString())) {
+
+										//Get roles assigned to the usergroup
+										userGroupRoles = GenericUtilities.getMultiListAttributeValue(userGroup,
+												awfMessagesList.get("USERGROUP_ROLES_ATTRID").toString());
+										logger.debug(
+												"Roles assigned to the UserGroup " + userGroup + " are:" + userGroupRoles);
+										
+										//If atleast one usergroup has the role,set the boolean value 'hasRole' to true and break the loop
+										if (userGroupRoles.size() > 0 && userGroupRoles.contains(role)) {
+
+											hasRole = true;
+											logger.debug("Boolean variable hasRole set to " + hasRole + "for User " + user);
+											break Loop;
+										}
+
+									}
+								}
+							}
+							
+
+						}
+					}
+
+				}
+				//If the user doesnt contain the role,add the user to the list
+				if (hasRole == false) {
+					usersWithoutRole.add(user);
+				}
+				logger.debug("Users without role " + role + " are:" + usersWithoutRole);
+			}
+
+		}
+		return usersWithoutRole;
+
+	}
 	
+	
+	/**
+	 * This method 
+		  - fetches users selected on on AWF cover page
+		  - Iterates through the selected Cascade list values and fetches Users based on number of levels 
+		  - If attribute Id passed to this method belongs to Reviewers ,add users under Quality Function to approvers list 
+		     and the users under other functions are added to acknowledgers list 
+		  - If attribute Id passed to this method does not belongs to Reviewers ,add users under all Functions to approvers list
+		  - returns the list of functions without any user under it and the users who are not present in agile system with 
+		   	LastName,FirstName and Email ID specified in cascade list
+	 * @param attrId
+	 * @param session
+	 * @param AWF
+	 * @param awfMessagesList
+	 * @return
+	 * @throws NumberFormatException
+	 * @throws APIException
+	 */
+	public static HashMap<Object, Object> getReviewersOnAWF(String attrId, IAgileSession session, IChange AWF,
+			HashMap<Object, Object> awfMessagesList) throws NumberFormatException, APIException {
+
+		HashMap<Object, Object> reviewersMap = new HashMap<Object, Object>();
+		HashSet<IUser> approvers = new HashSet<IUser>();
+		HashSet<IUser> acknowledgers = new HashSet<IUser>();
+		HashSet<String> invalidSelection = new HashSet<String>();
+
+		// Get the users selected from Reviewers/Approvers/Implementation-Reviewers
+		// attribute which is a cascade list on AWF cover page
+		ArrayList<String> reviewers = new ArrayList<String>();
+		reviewers = GenericUtilities.getMultiListAttributeValue(AWF, attrId);
+		logger.debug("Reviewers are:" + reviewers);
+
+		if (!reviewers.isEmpty()) {
+
+			Iterator<String> reviewersIterator = reviewers.iterator();
+			String reviewer = null;
+			String[] reviewerArray = null;
+
+			// Iterate through the cascade list values
+			while (reviewersIterator.hasNext()) {
+				int length = 0;
+
+				// Get each list value
+				reviewer = (String) reviewersIterator.next();
+				logger.debug("Reviewer : " + reviewer);
+				if (reviewer != null && !reviewer.equals("")) {
+
+					// If list value contains '|' it has sublevels
+					if (reviewer.contains("|")) {
+						logger.debug("Contains |");
+
+						// Split based on '|' to get sublevels
+						reviewerArray = reviewer.split("\\|");
+
+						// Get number of levels
+						length = reviewerArray.length;
+						logger.debug("Reviewer Array Size is:" + length);
+
+						String function = "";
+						String reviewerUserName = "";
+						IUser reviewerUser = null;
+
+						// Get Function name which is always on Level1
+						function = reviewerArray[0];
+						logger.debug("Function is:" + function);
+						
+						if (function != null) {
+							// If number of levels is n,the user is present on n-1 level
+							if (length > 1) {
+								reviewerUserName = reviewerArray[length - 1];
+							}
+							logger.debug("User name is:" + reviewerUserName);
+
+							if (reviewerUserName != null && !reviewerUserName.equals("")) {
+								// Fetch Agile User
+								reviewerUser = GenericUtilities.getAgileUser(session, reviewerUserName,
+										awfMessagesList.get("USER_WITH_EMAILID_CRITERIA").toString());
+								logger.debug("Agile user is:" + reviewerUser);
+
+								if (reviewerUser != null) {
+
+									// If attrId passed as an argument belongs to Reviewers attribute and Function
+									// is Quality,add the user to approvers list
+									if (attrId.equals(awfMessagesList.get("REVIEWERS_ATTRID").toString())) {
+										if (function
+												.equalsIgnoreCase(awfMessagesList.get("QUALITY_FUNCTION").toString())) {
+											approvers.add(reviewerUser);
+										}
+										// If attrId passed as an argument belongs to Reviewers attribute and Function
+										// is not Quality,add the user to acknowledgers
+										// list
+										else {
+											acknowledgers.add(reviewerUser);
+										}
+									}
+									// If attrId passed as an argument does not belongs to Reviewers attribute ,add
+									// the user to approvers list
+									else {
+										approvers.add(reviewerUser);
+									}
+								}
+
+								// Unable to fetch agile user
+								else {
+									invalidSelection.add(reviewerUserName);
+								}
+							}
+						}
+					}else {
+						invalidSelection.add(reviewer);
+					}
+				}
+
+			}
+
+		}
+		logger.debug("Approvers are:" + approvers);
+		logger.debug("Acknowledgers are:" + acknowledgers);
+		logger.debug("Invalid Users/Functions selected are:"+ invalidSelection);
+
+		reviewersMap.put("Approvers", approvers);
+		reviewersMap.put("Acknowledgers", acknowledgers);
+		reviewersMap.put("InvalidSelection", invalidSelection);
+		return reviewersMap;
+	}
 	
 }

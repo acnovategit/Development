@@ -1,9 +1,7 @@
 package com.cepheid.awf;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import org.apache.log4j.Logger;
 import com.agile.api.APIException;
 import com.agile.api.IAgileSession;
@@ -25,9 +23,15 @@ import com.agile.util.GenericUtilities;
  * If the user belongs to Quality function,he is added as Approver and remaining users are added as Acknowledgers at Review status
  * If Current Status is Submit/Regulatory affairs,this PX fetches the users under Approvers attribute on AWF cover page and adds them as 
  * approvers at Approve Status.
- * If Current Status is Approve,this PX fetches the users under Implementation Reviewers attribute on AWF cover page and the approvers at 
- * Submit/Regulatory Affairs and adds them as Approvers at Implement-Review state 
- *
+ * If Current Status is Approve,this PX fetches the users under Implementation Reviewers attribute on AWF cover page 
+ * and adds them as Approvers at Implement-Review state(Currently this part of code is commented) 
+ * 
+ * Before adding approvers/acknowledgers ,this PX checks for below
+ * -  if any user is already added as Reviewer ,this px removes the user from approvers/acknowledgers list to avoid duplicate user exception
+ * -  if any user doesnt contain 'A9 Approver - AWF' role,do not set him as approver/acknowledger
+ * -  if same user is added as approver and acknowledger,the px doesnt adds the user as acknowledger
+ * 
+ * 
  */
 
 public class SetReviewersOnAWF implements ICustomAction {
@@ -36,15 +40,19 @@ public class SetReviewersOnAWF implements ICustomAction {
 	ActionResult actionResult = new ActionResult();
 	public static String awfMessagesListName = "AWFMessagesList";
 
-	HashSet<IUser> approvers = new HashSet<IUser>();
-	HashSet<IUser> acknowledgers = new HashSet<IUser>();
-	HashSet<IUser> existingReviewers = new HashSet<IUser>();
-
+	@SuppressWarnings("unchecked")
 	@Override
 	public ActionResult doAction(IAgileSession session, INode node, IDataObject dataObject) {
 
 		try {
 			String result = "";
+			HashMap<Object, Object> reviewers = new HashMap<Object, Object>();
+			HashSet<IUser> approvers = new HashSet<IUser>();
+			HashSet<IUser> acknowledgers = new HashSet<IUser>();
+			HashSet<IUser> reviewersWithoutRequiredRoles = new HashSet<IUser>();
+			IStatus status = null;
+			HashSet<IUser> existingReviewers = new HashSet<IUser>();
+
 
 			// Initialize logger
 			GenericUtilities.initializeLogger(session);
@@ -69,118 +77,281 @@ public class SetReviewersOnAWF implements ICustomAction {
 							.equalsIgnoreCase(awfMessagesList.get("AWF_REVIEW_STATUS").toString())) {
 
 						// Get approvers and acknowledgers
-						getReviewers(awfMessagesList.get("REVIEWERS_ATTRID").toString(), session, AWF, currentStatus,
-								awfMessagesList);
+						reviewers = GenericUtilities.getReviewersOnAWF(
+								awfMessagesList.get("REVIEWERS_ATTRID").toString(), session, AWF, awfMessagesList);
+						approvers = (HashSet<IUser>) reviewers.get("Approvers");
+						acknowledgers = (HashSet<IUser>) reviewers.get("Acknowledgers");
 						logger.debug("Approvers are:" + approvers);
 						logger.debug("Acknowledgers are:" + acknowledgers);
+						
+						//If users select any function which doesnt have any user under it (or)  
+						//if the user selected is not available in Agile with FirstName,LastName and Email Id as specified in Cascade list,display a message in history tab
+						if(((HashSet<String>)reviewers.get("InvalidSelection")).size()>0) {
+							result = result+String.format(awfMessagesList.get("INVALID_SELECTION_MSG").toString(), (HashSet<String>)reviewers.get("InvalidSelection"));
+						}
 
 						if (!approvers.isEmpty()) {
-							// Add approvers at review
-							AWF.addReviewers(currentStatus, approvers, null, null, true,
-									String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), currentStatus.toString()));
-							result = result + String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), currentStatus.toString());
-							logger.debug("Result:" + result);
+
+							// Get existing reviewers
+							existingReviewers = getExistingReviewers(approvers, AWF, currentStatus,
+									WorkflowConstants.USER_APPROVER, session,
+									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString(),awfMessagesList);
+							logger.debug("Existing reviewers are:" + existingReviewers);
+							
+							// Remove existing reviewers to avoid duplicate user error
+							if(existingReviewers.size()>0) {
+								approvers.removeAll(existingReviewers);
+								result = result +String.format(awfMessagesList.get("CHANGE_STATUS_APPROVERS_ADDED").toString(), existingReviewers, currentStatus.toString());
+							}
+
+							if (!approvers.isEmpty()) {
+								
+								// Get list of approvers who doesnt have 'A9 Approver - AWF' role
+								reviewersWithoutRequiredRoles = GenericUtilities.getUsersWithoutRole(session, approvers,
+										awfMessagesList.get("AWF_APPROVER_ROLE").toString());
+								logger.debug("Approvers without A9 Approver - AWF  role:" + reviewersWithoutRequiredRoles);
+
+								// Remove approvers who doesnt have 'A9 Approver - AWF' role from final set of
+								// approvers
+								if (reviewersWithoutRequiredRoles.size() > 0) {
+									approvers.removeAll(reviewersWithoutRequiredRoles);
+									logger.debug(
+											"Approvers after removing users without A9 Approver - AWF are:" + approvers);
+									result = result+String.format(awfMessagesList.get("REMOVED_USERS_WITHOUT_PRIVILEGES").toString(), reviewersWithoutRequiredRoles);
+
+								}
+
+								if (!approvers.isEmpty()) { 
+									// Add approvers at review
+									AWF.addReviewers(currentStatus, approvers, null, null, true, String.format(
+											String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+													currentStatus.toString())));
+									result = result + String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+											currentStatus.toString());
+									
+								}
+							}
+							
+						}else {
+							result = result + String.format(awfMessagesList.get("APPROVERS_NOT_SELECTED").toString(),currentStatus.toString());
 						}
 
 						if (!acknowledgers.isEmpty()) {
-							// Add acknowledgers at review
-							AWF.addReviewers(currentStatus, null, null, acknowledgers, true,
-									String.format(awfMessagesList.get("ACKNOWLEDGERS_ADDED").toString(), currentStatus.toString()));
-							result = result + String.format(awfMessagesList.get("ACKNOWLEDGERS_ADDED").toString(), currentStatus.toString());
+
+							// Get existing approvers 
+							existingReviewers = getExistingReviewers(acknowledgers, AWF, currentStatus,
+									WorkflowConstants.USER_APPROVER, session,
+									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString(),awfMessagesList);
+							logger.debug("Existing approvers are:" + existingReviewers);
+							
+							// Remove existing approvers to avoid duplicate user error
+							if(existingReviewers.size()>0) {
+								acknowledgers.removeAll(existingReviewers);
+								result = result +String.format(awfMessagesList.get("DUPLICATE_USER").toString(), existingReviewers, currentStatus.toString());
+							}
+							
+							if(!acknowledgers.isEmpty()) {
+								// Get existing acknowledgers 
+								existingReviewers = getExistingReviewers(acknowledgers, AWF, currentStatus,
+										WorkflowConstants.USER_ACKNOWLEDGER, session,
+										awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString(),awfMessagesList);
+								logger.debug("Existing acknowledgers are:" + existingReviewers);
+								
+								// Remove existing acknowledgers to avoid duplicate user error
+								if(existingReviewers.size()>0) {
+									acknowledgers.removeAll(existingReviewers);
+									result = result +String.format(awfMessagesList.get("CHANGE_STATUS_ACKNOWLEDGERS_ADDED").toString(), existingReviewers, currentStatus.toString());
+								}
+							}
+
+							if(!acknowledgers.isEmpty()) {
+								// Get list of acknowledgers who doesnt have 'A9 Approver - AWF' role
+								reviewersWithoutRequiredRoles = GenericUtilities.getUsersWithoutRole(session, acknowledgers,
+										awfMessagesList.get("AWF_APPROVER_ROLE").toString());
+								logger.debug(
+										"Acknowledgers without A9 Approver - AWF  role:" + reviewersWithoutRequiredRoles);
+
+								// Remove acknowledgers who doesnt have 'A9 Approver - AWF' role from final set
+								// of
+								// acknowledgers
+								if (reviewersWithoutRequiredRoles.size() > 0) {
+									acknowledgers.removeAll(reviewersWithoutRequiredRoles);
+									logger.debug("Acknowledgers after removing users without A9 Approver - AWF are:"
+											+ acknowledgers);
+									result = result+String.format(awfMessagesList.get("REMOVED_USERS_WITHOUT_PRIVILEGES").toString(), reviewersWithoutRequiredRoles);
+
+								}
+
+								if (!acknowledgers.isEmpty()) {
+									// Add acknowledgers at review
+									AWF.addReviewers(currentStatus, null, null, acknowledgers, true,
+											String.format(awfMessagesList.get("ACKNOWLEDGERS_ADDED").toString(),
+													 acknowledgers, currentStatus.toString()));
+									result = result + String.format(awfMessagesList.get("ACKNOWLEDGERS_ADDED").toString(),
+											acknowledgers, currentStatus.toString());
+
+								}
+							}
+
+						}
+						else {
+							result = result + String.format(awfMessagesList.get("ACKNOWLEDGERS_NOT_SELECTED").toString(),currentStatus.toString());
 						}
 
 						// If status is Submit/Regualtory Affairs
 					} else if (currentStatus.toString()
 							.equalsIgnoreCase(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString())) {
+						
+						//Get status
+						status = GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), 
+								AWF.getWorkflow());
+						
+						if(status!=null) {
+							
+							// Get Approvers
+							reviewers = GenericUtilities.getReviewersOnAWF(
+									awfMessagesList.get("APPROVERS_ATTRID").toString(), session, AWF, awfMessagesList);
+							approvers = (HashSet<IUser>) reviewers.get("Approvers");
+							acknowledgers = (HashSet<IUser>) reviewers.get("Acknowledgers");
+							logger.debug("Approvers are:" + approvers);
+							logger.debug("Acknowledgers are:" + acknowledgers);
 
-						// Get Approvers
-						getReviewers(awfMessagesList.get("APPROVERS_ATTRID").toString(), session, AWF, currentStatus,
-								awfMessagesList);
-						logger.debug("Approvers are:" + approvers);
-						logger.debug("Acknowledgers are:" + acknowledgers);
-
-						if (!approvers.isEmpty()) {
-
-							// Get existing reviewers at Approve status incase of backward workflow movement
-							existingReviewers = getExistingReviewers(AWF, AWF.getDefaultNextStatus(),
-									WorkflowConstants.USER_APPROVER, session,
-									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString());
-							logger.debug("Existing Reviewers are:" + existingReviewers);
-
-							// Remove Existingreviewers if any at Approve status
-							if (!existingReviewers.isEmpty()) {
-
-								AWF.removeReviewers(AWF.getDefaultNextStatus(), existingReviewers, null, null, "");
+							//If users select any function which doesnt have any user under it (or)  
+							//if the user selected is not available in Agile with FirstName,LastName and Email Id as specified in Cascade list,display a message in history tab
+							if(((HashSet<String>)reviewers.get("InvalidSelection")).size()>0) {
+								result = result+String.format(awfMessagesList.get("INVALID_SELECTION_MSG").toString(), (HashSet<String>)reviewers.get("InvalidSelection"));
 							}
-							// Add Approvers at Approve status
-							AWF.addReviewers(AWF.getDefaultNextStatus(), approvers, null, null, true,
-									String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), awfMessagesList.get("AWF_APPROVE_STATUS").toString()));
-							result = result+String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), awfMessagesList.get("AWF_APPROVE_STATUS").toString());
+							
+							//Get existing reviewers
+							existingReviewers = getExistingReviewers(approvers, AWF, status,
+									WorkflowConstants.USER_APPROVER, session,
+									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString(),awfMessagesList);
+							logger.debug("Existing reviewers are:" + existingReviewers);
+							
+							// Remove existing reviewers to avoid duplicate user error
+							if (!existingReviewers.isEmpty()) {
+								AWF.removeReviewers(status, existingReviewers, null, null, "");
+							}
+							
+							if (!approvers.isEmpty()) {
+
+									// Get list of approvers who doesnt have 'A9 Approver - AWF' role
+									reviewersWithoutRequiredRoles = GenericUtilities.getUsersWithoutRole(session, approvers,
+											awfMessagesList.get("AWF_APPROVER_ROLE").toString());
+									logger.debug("Approvers without A9 Approver - AWF  role:" + reviewersWithoutRequiredRoles);
+
+									// Remove approvers who doesnt have 'A9 Approver - AWF' role from final set of
+									// approvers
+									if (reviewersWithoutRequiredRoles.size() > 0) {
+										approvers.removeAll(reviewersWithoutRequiredRoles);
+										logger.debug(
+												"Approvers after removing users without A9 Approver - AWF are:" + approvers);
+										result = result+String.format(awfMessagesList.get("REMOVED_USERS_WITHOUT_PRIVILEGES").toString(), reviewersWithoutRequiredRoles);
+
+									}
+
+									if (!approvers.isEmpty()) {
+										
+										// Add Approvers at Approve status
+										AWF.addReviewers(status, approvers, null, null, true,
+												String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+														status.toString()));
+										result = result + String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+												status.toString());
+									}
+
+								
+							}else {
+								result = result + String.format(awfMessagesList.get("APPROVERS_NOT_SELECTED").toString(),status.toString());
+
+							}
+							
 						}
-						// If status is Approve
-					} else if (currentStatus.toString()
+						
+						
+					} 
+					/**Disabled below part as the Implementation-Reviewers attribute has been disabled**/
+					/**
+					// If status is Approve
+					else if (currentStatus.toString()
 							.equalsIgnoreCase(awfMessagesList.get("AWF_APPROVE_STATUS").toString())) {
-
-						//Get Implementation Reviewers 
-						ArrayList<String> implementationReviewers = new ArrayList<String>();
-						implementationReviewers = GenericUtilities.getMultiListAttributeValue(AWF,
-								awfMessagesList.get("IMPLEMENT_REVIEWERS_ATTRID").toString());
-						logger.debug("Implementation Reviewers are:" + implementationReviewers);
-
-						//If there are any Implementation reviewers
-						if (implementationReviewers.size() > 0) {
-
-							Iterator<String> implementationReviewersIterator = implementationReviewers.iterator();
-							String implementationReviewer = "";
-							IUser implementationReviewerUser = null;
-
-							//Iterate through the Implementation Reviewers
-							while (implementationReviewersIterator.hasNext()) {
-								//Fetch the user  
-								implementationReviewer = implementationReviewersIterator.next();
-								implementationReviewerUser = GenericUtilities.getAgileUser(session,
-										implementationReviewer, awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString());
-								logger.debug("Implementation Reviewer is:" + implementationReviewerUser);
-
-								//Add Implementation Reviewers to approvers list
-								if (implementationReviewerUser != null) {
-									approvers.add(implementationReviewerUser);
-								}
+						
+						//Get status
+						status = GenericUtilities.getStatus(awfMessagesList.get("AWF_IMPLEMENT_REVIEW_STATUS").toString(), 
+								AWF.getWorkflow());
+						
+						if(status!=null) {
+							// Get Implementation Reviewers
+							reviewers = GenericUtilities.getReviewersOnAWF(
+									awfMessagesList.get("IMPLEMENT_REVIEWERS_ATTRID").toString(), session, AWF,
+									awfMessagesList);
+							approvers = (HashSet<IUser>) reviewers.get("Approvers");
+							acknowledgers = (HashSet<IUser>) reviewers.get("Acknowledgers");
+							logger.debug("Approvers are:" + approvers);
+							logger.debug("Acknowledgers are:" + acknowledgers);
+							
+							//If users select any function which doesnt have any user under it (or)  
+							//if the user selected is not available in Agile with FirstName,LastName and Email Id as specified in Cascade list,display a message in history tab
+							if(((HashSet<String>)reviewers.get("InvalidSelection")).size()>0) {
+								result = result+String.format(awfMessagesList.get("INVALID_SELECTION_MSG").toString(), (HashSet<String>)reviewers.get("InvalidSelection"));
 							}
-							logger.debug(
-									"Approvers after adding users chosen at Implement-Review state are:" + approvers);
-						}
 
-						if (!approvers.isEmpty()) {
-
-							// Get existing reviewers at Implement-Review Status in case of backward workflow movement
-							existingReviewers = getExistingReviewers(AWF, AWF.getDefaultNextStatus(),
+							//Get existing reviewers
+							existingReviewers = getExistingReviewers(approvers, AWF, 
+									status,
 									WorkflowConstants.USER_APPROVER, session,
-									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString());
-							logger.debug("Existing Reviewers are:" + existingReviewers);
+									awfMessagesList.get("USER_WITH_USERID_CRITERIA").toString(),awfMessagesList);
+							logger.debug("Existing reviewers are:" + existingReviewers);
 
-							// Remove Existing reviewers if any at Implement-Review status
+							// Remove existing reviewers to avoid duplicate user error
 							if (!existingReviewers.isEmpty()) {
-								AWF.removeReviewers(AWF.getDefaultNextStatus(), existingReviewers, null, null, "");
+								AWF.removeReviewers(status, existingReviewers, null, null, "");
 							}
+							
+							if (!approvers.isEmpty()) {
+								
+									// Get list of approvers who doesnt have 'A9 Approver - AWF' role
+									reviewersWithoutRequiredRoles = GenericUtilities.getUsersWithoutRole(session, approvers,
+											awfMessagesList.get("AWF_APPROVER_ROLE").toString());
+									logger.debug("Approvers without A9 Approver - AWF  role:" + reviewersWithoutRequiredRoles);
 
-							// Add Approvers at Implement-Review state
-							AWF.addReviewers(AWF.getDefaultNextStatus(), approvers, null, null, true,
-									String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), awfMessagesList.get("AWF_IMPLEMENT_REVIEW_STATUS").toString()));
-							result = result + String.format(awfMessagesList.get("APPROVERS_ADDED").toString(), awfMessagesList.get("AWF_IMPLEMENT_REVIEW_STATUS").toString());
+									// Remove approvers who doesnt have 'A9 Approver - AWF' role from final set of
+									// approvers
+									if (reviewersWithoutRequiredRoles.size() > 0) {
+										approvers.removeAll(reviewersWithoutRequiredRoles);
+										logger.debug(
+												"Approvers after removing users without A9 Approver - AWF are:" + approvers);
+										result = result+String.format(awfMessagesList.get("REMOVED_USERS_WITHOUT_PRIVILEGES").toString(), reviewersWithoutRequiredRoles);
+										
+
+									}
+									if (!approvers.isEmpty()) {
+										
+										// Add Approvers at Implement-Review state
+										AWF.addReviewers(status, approvers, null, null, true,
+												String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+														status.toString()));
+										result = result + String.format(awfMessagesList.get("APPROVERS_ADDED").toString(),approvers,
+												status.toString());
+									}
+								
+
+							}
+							// If no approvers are selected at Implement-Review,display below message in
+							// history tab
+							else {
+								result = result + String.format(awfMessagesList.get("APPROVERS_NOT_SELECTED").toString(),status.toString());
+							}
 						}
-						//If no approvers are selected at Submit/Regulatory Affairs and Implement-Review,display below message in history tab
-						else {
-							result = result + awfMessagesList.get("APPROVERS_NOT_SELECTED").toString();
-						}
 
-
-					} else {
+					} **/
+					else {
 						logger.info("Invalid Status");
 					}
 
 				}
 			}
+			
 			logger.debug("Result:" + result);
 			actionResult = new ActionResult(ActionResult.STRING, result);
 
@@ -198,9 +369,9 @@ public class SetReviewersOnAWF implements ICustomAction {
 
 		return actionResult;
 	}
-	
+
 	/**
-	 * This method fetches the existing reviewers at a status,converts each reviewer to Agile User and returns the reviewers in the form of collection  
+	 * This method returns the list of existing reviewers at a status 
 	 * @param AWF
 	 * @param status
 	 * @param reviewerType
@@ -209,13 +380,13 @@ public class SetReviewersOnAWF implements ICustomAction {
 	 * @return
 	 * @throws APIException
 	 */
-	private HashSet<IUser> getExistingReviewers(IChange AWF, IStatus status, int reviewerType, IAgileSession session,
-			String criteria) throws APIException {
+	private HashSet<IUser> getExistingReviewers(HashSet<IUser> reviewers, IChange AWF, IStatus status,
+			int reviewerType, IAgileSession session, String criteria,HashMap<Object, Object> awfMessagesList) throws APIException {
 
-		//Get Existing reviewers based on state
-		HashSet<IUser> existingReviewersList = new HashSet<IUser>();
+		// Get Existing reviewers based on state
 		ISignoffReviewer[] existingReviewersArray = AWF.getReviewers(status, reviewerType);
 		logger.debug("Existing Reviewers Array Size:" + existingReviewersArray.length);
+		HashSet<IUser> existingReviewers = new HashSet<IUser>();
 
 		if (existingReviewersArray.length > 0) {
 
@@ -223,133 +394,35 @@ public class SetReviewersOnAWF implements ICustomAction {
 			IDataObject existingReviewer = null;
 			IUser existingReviewerUser = null;
 
-			//Iterate through the existing reviewers array
+			// Iterate through the existing reviewers array
 			while (i < existingReviewersArray.length) {
-				//Fetch the existing reviewer
+				// Fetch the existing reviewer
 				existingReviewer = existingReviewersArray[i].getReviewer();
 				logger.debug("Existing Reviewer Data Object is:" + existingReviewer);
 
 				if (existingReviewer != null) {
-					//Fetch agile user
+					// Fetch agile user
 					existingReviewerUser = GenericUtilities.getAgileUser(session, existingReviewer.toString(),
 							criteria);
 					logger.debug("Existing reviewer Agile User is :" + existingReviewerUser);
 
-					//Add user to collection
-					if (existingReviewerUser != null) {
-						existingReviewersList.add(existingReviewerUser);
+					// remove the existing reviewer
+					if (existingReviewerUser != null && status != null) {
+						if (status.toString().equalsIgnoreCase(awfMessagesList.get("AWF_REVIEW_STATUS").toString())) {
+							if (reviewers.contains(existingReviewerUser)) {
+								existingReviewers.add(existingReviewerUser);
+							}
+						} else {
+							existingReviewers.add(existingReviewerUser);
+						}
+
 					}
 				}
 				i++;
 			}
-			logger.debug("Existing Reviewers are :" + existingReviewersList);
 		}
 
-		return existingReviewersList;
+		return existingReviewers;
 	}
 
-	/**
-	 * This method
-	 * - fetches users selected on Reviewers/Approvers attribute on AWF cover page
-	 * - Iterates through the selected Cascade list values and fetches Users based on number of levels
-	 * - If status is Review ,add users under Quality Function to approvers list and the users under other functions are added to acknowledgers list
-	 * - If status is not Review ,add users under all Functions to approvers list
-	 * @param attrId
-	 * @param session
-	 * @param AWF
-	 * @param currentStatus
-	 * @param awfMessagesList
-	 * @throws NumberFormatException
-	 * @throws APIException
-	 */
-	public void getReviewers(String attrId, IAgileSession session, IChange AWF, IStatus currentStatus,
-			HashMap<Object, Object> awfMessagesList) throws NumberFormatException, APIException {
-
-		//Get the users selected on Reviewers/Approvers attribute on AWF cover page
-		ArrayList<String> reviewers = new ArrayList<String>();
-		reviewers = GenericUtilities.getMultiListAttributeValue(AWF, attrId);
-		logger.debug("Reviewers are:" + reviewers);
-
-		if (!reviewers.isEmpty()) {
-			Iterator<String> reviewersIterator = reviewers.iterator();
-			String reviewer = null;
-			String[] reviewerArray = null;
-		
-		
-			//Iterate through the cascade list values
-			while (reviewersIterator.hasNext()) {
-				int length = 0;
-				
-				//Get each list value
-				reviewer = (String) reviewersIterator.next();
-				logger.debug("Reviewer : " + reviewer);
-				if (reviewer != null && !reviewer.equals("")) {
-					
-					//If list value contains '|' it has sublevels
-					if (reviewer.contains("|")) {
-						logger.debug("Contains |");
-						
-						//Split based on '|' to get sublevels
-						reviewerArray = reviewer.split("\\|");
-						
-						//Get number of levels
-						length = reviewerArray.length;
-						logger.debug("Reviewer Array Size is:" + length);
-						
-						String function = "";
-						String reviewerUserName = "";
-						IUser reviewerUser = null;
-						
-						//Get Function name which is always on Level1
-						function = reviewerArray[0];
-						
-						//If number of levels is 3,the user is present on 3rd level
-						if (length == 3) {
-							reviewerUserName = reviewerArray[2];
-						//If number of levels is 4,the user is present on 4th level
-						} else if (length == 4) {
-							reviewerUserName = reviewerArray[3];
-						} else {
-							logger.info("Invalid length");
-						}
-						logger.debug("User value is:" + reviewerUserName);
-						logger.debug("Function is:" + function);
-						
-						if (reviewerUserName != null && !reviewerUserName.equals("")) {
-							//Fetch Agile User
-							reviewerUser = GenericUtilities.getAgileUser(session, reviewerUserName,
-									awfMessagesList.get("USER_WITH_EMAILID_CRITERIA").toString());
-							logger.debug("Agile user is:" + reviewerUser);
-							
-							if (reviewerUser != null && function != null) {
-								
-								//If status is Review and Function is Quality,add the user to approvers list
-								if (currentStatus.toString()
-										.equalsIgnoreCase(awfMessagesList.get("AWF_REVIEW_STATUS").toString())) {
-									if (function.equalsIgnoreCase(awfMessagesList.get("QUALITY_FUNCTION").toString())) {
-										approvers.add(reviewerUser);
-									} 
-									//If status is Review and Function is not Quality,add the user to acknowledgers list
-									else {
-										acknowledgers.add(reviewerUser);
-									}
-								} 
-								//If status is not Review ,add the user to approvers list
-								else {
-									approvers.add(reviewerUser);
-								}
-							}
-
-						}
-					}
-				}
-
-			}
-			logger.debug("Approvers are:" + approvers);
-			logger.debug("Acknowledgers are:" + acknowledgers);
-		}
-
-	}
-
-	
 }
