@@ -132,7 +132,7 @@ public class SendNotification implements IEventAction {
 				if(difference > Integer.parseInt(awfMessagesList.get("DURATION").toString())) {
 					// Get pending Signoff details
 					HashMap<Object, Object> pendingSignOffDetails = new HashMap<Object, Object>();
-					pendingSignOffDetails = GenericUtilities.getPendingSignOffDetails(awf, awfMessagesList);
+					pendingSignOffDetails = GenericUtilities.getPendingSignOffDetails(awf, awfMessagesList,awfMessagesList.get("AWF_REVIEW_STATUS").toString());
 					logger.debug("Pending SignOff Details are:" + pendingSignOffDetails);
 
 					// Get Impact assessment attribute values of AWF
@@ -153,7 +153,7 @@ public class SendNotification implements IEventAction {
 
 						GenericUtilities.autoPromoteAWF(countOfYesAttrs, awf, awfMessagesList);
 						logger.info("Autopromotion Successful");
-
+						
 					}
 					// If AWF is in review for >=5 days and approval is pending,send notification to
 					// pending approvers after 5 days

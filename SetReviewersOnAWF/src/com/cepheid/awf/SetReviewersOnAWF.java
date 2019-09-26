@@ -13,7 +13,10 @@ import com.agile.api.IStatus;
 import com.agile.api.IUser;
 import com.agile.api.WorkflowConstants;
 import com.agile.px.ActionResult;
-import com.agile.px.ICustomAction;
+import com.agile.px.EventActionResult;
+import com.agile.px.IEventAction;
+import com.agile.px.IEventInfo;
+import com.agile.px.IWFChangeStatusEventInfo;
 import com.agile.util.GenericUtilities;
 
 /**
@@ -34,7 +37,7 @@ import com.agile.util.GenericUtilities;
  * 
  */
 
-public class SetReviewersOnAWF implements ICustomAction {
+public class SetReviewersOnAWF implements IEventAction {
 
 	static Logger logger = Logger.getLogger(SetReviewersOnAWF.class);
 	ActionResult actionResult = new ActionResult();
@@ -42,7 +45,7 @@ public class SetReviewersOnAWF implements ICustomAction {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public ActionResult doAction(IAgileSession session, INode node, IDataObject dataObject) {
+	public EventActionResult doAction(IAgileSession session, INode arg1, IEventInfo eventInfo) {
 
 		try {
 			String result = "";
@@ -53,7 +56,6 @@ public class SetReviewersOnAWF implements ICustomAction {
 			IStatus status = null;
 			HashSet<IUser> existingReviewers = new HashSet<IUser>();
 
-
 			// Initialize logger
 			GenericUtilities.initializeLogger(session);
 
@@ -61,8 +63,11 @@ public class SetReviewersOnAWF implements ICustomAction {
 			HashMap<Object, Object> awfMessagesList = new HashMap<Object, Object>();
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 
+			//Get ChangeStatus Event Info
+			IWFChangeStatusEventInfo changeStatusEventInfo = (IWFChangeStatusEventInfo) eventInfo;
+			
 			// Get AWF Object
-			IChange AWF = (IChange) dataObject;
+			IChange AWF = (IChange) changeStatusEventInfo.getDataObject();
 			logger.debug("AWF is:" + AWF);
 
 			if (AWF != null) {
@@ -267,8 +272,6 @@ public class SetReviewersOnAWF implements ICustomAction {
 							}
 							
 						}
-						
-						
 					} 
 					/**Disabled below part as the Implementation-Reviewers attribute has been disabled**/
 					/**
@@ -367,7 +370,7 @@ public class SetReviewersOnAWF implements ICustomAction {
 
 		}
 
-		return actionResult;
+		return new EventActionResult(eventInfo, actionResult);
 	}
 
 	/**

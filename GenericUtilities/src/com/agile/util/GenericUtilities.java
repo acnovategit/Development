@@ -512,6 +512,7 @@ public class GenericUtilities {
 
 		HashMap<Object, Object> pendingSignOffDetails = new HashMap<Object, Object>();
 		HashSet<String> pendingApprovers = new HashSet<String>();
+		HashSet<String> pendingAcknowledgers = new HashSet<String>();
 
 		ITable workflowTable = awf.getTable(ChangeConstants.TABLE_WORKFLOW);
 		Iterator<IRow> workflowIterator = workflowTable.iterator();
@@ -556,6 +557,9 @@ public class GenericUtilities {
 						else if (action.equals(awfMessagesList.get("AWAITING_ACKNOWLEDGEMENT_ACTION").toString())) {
 
 							acknowledgementPending = true;
+							if(cells[4].getValue() != null) {
+								pendingAcknowledgers.add(cells[4].getValue().toString());
+							}
 
 						}
 						// Get count of completed approvals
@@ -586,6 +590,7 @@ public class GenericUtilities {
 		pendingSignOffDetails.put("pendingApprovers", pendingApprovers);
 		pendingSignOffDetails.put("totalNumOfApprovers", totalNumOfApprovers);
 		pendingSignOffDetails.put("totalNumOfAcknowledgers", totalNumOfAcknowledgers);
+		pendingSignOffDetails.put("pendingAcknowledgers", pendingAcknowledgers);
 
 		logger.debug("Pending Signoff details for "+awf+" is: "+pendingSignOffDetails);
 		return pendingSignOffDetails;
@@ -602,21 +607,26 @@ public class GenericUtilities {
 	 */
 	public static void autoPromoteAWF(int countOfYesAttrs, IChange awf, HashMap<Object, Object> awfMessagesList)
 			throws APIException {
+		
+		logger.info("Inside Autopromote AWF");
+		
 		// If all impact assessment attributes are filled as No,autopromote AWF to
 		// Approve
 		
 		if (countOfYesAttrs == 0) {
+			logger.info("Autopromoting AWF "+awf);
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
 					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
-			logger.info(awf+"Autopromoted to Submit/RA");
+			logger.info(awf+" autopromoted to Submit/RA");
 			
 			if(awf.getStatus()!=null) {
 				logger.debug("Status of "+awf+" is:"+awf.getStatus());
 				if(awf.getStatus().toString().equalsIgnoreCase(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString())) {
+					logger.info("Autopromoting AWF "+awf);
 					awf.changeStatus(
 							GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
 							false, "", false, false, null, null, null, null, false);
-					logger.info(awf+"Autopromoted to Approve");
+					logger.info(awf+" autopromoted to Approve");
 				}
 				
 			}
@@ -625,10 +635,10 @@ public class GenericUtilities {
 		// If any impact assessment attribute is filled as Yes,autopromote AWF to
 		// Submit/Regulatory affairs
 		else {
-
+			logger.info("Autopromoting AWF "+awf);
 			awf.changeStatus(GenericUtilities.getStatus(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString(),
 					awf.getWorkflow()), false, "", false, false, null, null, null, null, false);
-			logger.info(awf+"Autopromoted to Submit/RA");
+			logger.info(awf+" autopromoted to Submit/RA");
 		}
 	}
 	
