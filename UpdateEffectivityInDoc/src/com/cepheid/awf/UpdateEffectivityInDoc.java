@@ -56,10 +56,13 @@ public class UpdateEffectivityInDoc implements IEventAction {
     public static String ATTR_DOC_MSG;
     public static String MAIL_SUBJECT;
     public static String MAIL_HEADER;
+    public static String ERROR_MSG_FINAL_EFF;
+    public static String LIFECYCLE_OBSOLETE;
     public static HashMap<Object, Object> awfMessagesList; 
-    
+	public static String RELEASE_AUDIT_ERROR;
     String sNewEffectiveDate;
 	String sOldEffectiveDate;
+
   
 	/**
 	 *The entry point of the Event process extension.
@@ -72,26 +75,30 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	public EventActionResult doAction(IAgileSession session,INode node,IEventInfo eventinfo){
 	
 	
-	
+	IRow row = null;
     InputStream inStream;
 	String sFilePath = "/ora01/APP/agilevault/";
 	String sEffectiveDate;
 	String sErrorMessage = "";
 	String sFileHeaderText;
+	String sLifecycle;
 	IDataObject part;
 	ActionResult actionResult;
 	Map<String,List<String>> mapError= new HashMap<String,List<String>>();
-	IChange eco;
+	IChange eco = null;
 	IObjectEventInfo info;
+	String sUpdateMessage;
 
 	try {
+		logger.info("--------------------------------------------------------------------");
+	
 		GenericUtilities.initializeLogger(session);
 	     awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 		 vInitializeConstants(session);
 		
 		info = (IObjectEventInfo) eventinfo;
 		eco = (IChange) info.getDataObject();
-		
+		logger.info("Processing :"+eco.getName() );
 	    
 		HashMap<Object, Object> pendingSignOffDetails = GenericUtilities.getPendingSignOffDetails(eco, awfMessagesList, eco.getStatus().toString());
 	
@@ -126,18 +133,20 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		affectedItemsIterator=affectedItems.iterator();		
         
 		while(affectedItemsIterator.hasNext()){
-			IRow row = (IRow) affectedItemsIterator.next();
+			row = (IRow) affectedItemsIterator.next();
 			part = row.getReferent();	
-			logger.debug("Part is :" +part);
+			logger.debug("Part we are processing  is :" +part);
 			sEffectiveDate= DocumentUtilityAspose.now();
-			logger.debug("Effective Date" +sEffectiveDate);
-			
+		    sLifecycle = row.getValue(ChangeConstants.ATT_AFFECTED_ITEMS_LIFECYCLE_PHASE).toString();
+			logger.info("Lifecycle of the afected item" + part.getName() + " is:" +sLifecycle);	   
 			//Iterate Attachments Table
 			ITable attachments=part.getTable(ItemConstants.TABLE_ATTACHMENTS);
 			Iterator<?> attachmentsIterator=attachments.iterator();
 			List<String> lsErrorMessages = new ArrayList<String>();
 			
 			while(attachmentsIterator.hasNext()){
+				
+			
 				sOldEffectiveDate ="";
 				row = (IRow) attachmentsIterator.next();
 				IFileFolder fileFolder = (IFileFolder)row.getReferent();
@@ -159,6 +168,18 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				if (((ICheckoutable)row).isCheckedOut()) {
 					
 					logger.error("File "+sFileName+" already checked out.");
+					
+					List<String> lsErrorMessages1 = new ArrayList<String>();
+					lsErrorMessages1.add("File " + sFileName + " already checked out. This file is attached to part "+part.getName());
+					mapError.put( eco.getName().toString(),lsErrorMessages1);
+					
+					
+					String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+					String to = TO_ADDRESS;
+					String from = FROM_ADDRESS;
+					GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+					
+					
 					actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception("File "+sFileName+" already checked out."));
 					return new EventActionResult(eventinfo, actionResult);
 					
@@ -172,7 +193,9 @@ public class UpdateEffectivityInDoc implements IEventAction {
 					if(bCheckFile(inStream,sFileName,sFilePath))
 				    {
 						DocumentUtilityAspose.vAcceptAllRevisions(sFilePath+sFileName);
-				    	sFileHeaderText=DocumentUtilityAspose.readHeaderText(sFilePath+sFileName);
+						
+						
+						sFileHeaderText=DocumentUtilityAspose.readHeaderText(sFilePath+sFileName);
 				        logger.info("File header is: "+sFileHeaderText);
 				        
 				       String sDocuNumber =  sGetDocNumberAndOldEffectiveDate(sFileHeaderText);
@@ -194,6 +217,17 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				    	     logger.info("File cancel checked out");
 				    		continue;	
 				    	}
+				       
+				       //If the lifecycle phase of the affected item is Obsolete, then print Obsolete watermark
+				       if(sLifecycle.equalsIgnoreCase(LIFECYCLE_OBSOLETE))
+						{
+							DocumentUtilityAspose.insertWatermarkText(sFilePath+sFileName, sLifecycle);
+							logger.info(" Printing Obsolete Watermark for the file :"+sFileName);
+						 	((IAttachmentFile)row).setFile(new File(sFilePath+sFileName));
+							((ICheckoutable) row).checkIn();
+							 logger.info("File checked in");
+				    	  	continue;
+						}
 				       
 				       if (sOldEffectiveDate.equals(""))
 				       {
@@ -230,6 +264,20 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		} //End of Affected items iterator
         
 	
+		  Map<?, ?> results = eco.audit();
+		  if(!results.isEmpty())
+		  {
+		  List<String> lsErrorMessages = new ArrayList<String>();
+		  lsErrorMessages.add(RELEASE_AUDIT_ERROR);
+		  mapError.put( eco.getName().toString(),lsErrorMessages);
+		  sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
+		  
+		  
+		  }
+		
+		
+		sUpdateMessage = "Effectivity Date updated and set to "+sNewEffectiveDate;
+	
 		if(!mapError.isEmpty())
 		{
 		
@@ -246,7 +294,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		 
 		 eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
 		 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sErrorMessage);
-		 
+		 sUpdateMessage = String.format(ERROR_MSG_FINAL_EFF, sNewEffectiveDate);
 		 
 		  
 		}
@@ -258,14 +306,60 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		}
 		
 		
+		
+		String sEffectivityUpdateSucess = eco.getValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_SUCCESFUL").toString())).toString();
+		
+		if(sEffectivityUpdateSucess.equalsIgnoreCase(DOC_UPDATE_ERROR_YES))
+		{   
+			Object [] nullObjectList = null;
+				IStatus nextstatus = eco.getDefaultNextStatus();
+				logger.info("Auto-promoting to"+ nextstatus.getName());
+	
+				eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
+				logger.info("AWF Released");
+		}
+		
+				
+		
 	} catch (Exception e) {
+	
+		try {
+			if (((ICheckoutable) row).isCheckedOut()) {
+				((ICheckoutable) row).cancelCheckout();
+				logger.info("File cancel checked out");
+			
+			}
+			
+			List<String> lsErrorMessages = new ArrayList<String>();
+			lsErrorMessages.add(e.getMessage()+e.getCause().toString()+e.getStackTrace().toString());
+			mapError.put( eco.getName().toString(),lsErrorMessages);
+			
+			
+			String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+			String to = TO_ADDRESS;
+			String from = FROM_ADDRESS;
+			GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+			
+			}
+			catch (APIException ap)
+			{
+				logger.error("API Exception :"+ e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
+				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
+				return new EventActionResult(eventinfo, actionResult);
+			}
+			
+		
 		actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e.getMessage()));
 		e.printStackTrace();
 		logger.error("Error in execution of Effectivity Update Event:"+e.getMessage());
 		return new EventActionResult(eventinfo, actionResult);
 	}
 	
-	actionResult = new ActionResult(ActionResult.STRING, "Effectivity Date updated and set to "+sNewEffectiveDate);
+	
+	
+	
+	
+	actionResult = new ActionResult(ActionResult.STRING,sUpdateMessage);
 	
 	return new EventActionResult(eventinfo, actionResult);
 	}
@@ -292,6 +386,9 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	    ATTR_DOC_MSG = awfMessagesList.get("DOCUMENT_UPDATE_ERROR").toString();
 	 	MAIL_SUBJECT=	awfMessagesList.get("AWF_EFF_MAIL_SUBJECT").toString();
 	 	MAIL_HEADER= awfMessagesList.get("AWF_MAIL_HEADER").toString();
+	 	ERROR_MSG_FINAL_EFF=awfMessagesList.get("ERROR_MSG_FINAL_EFF").toString();
+	 	LIFECYCLE_OBSOLETE =awfMessagesList.get("OBSOLETE_LIFECYCLE_PHASE").toString();
+	 	RELEASE_AUDIT_ERROR = awfMessagesList.get("RELEASE_AUDIT_ERROR").toString();
 	}
 	
 	
