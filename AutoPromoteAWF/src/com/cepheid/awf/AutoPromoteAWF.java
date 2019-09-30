@@ -1,8 +1,6 @@
 package com.cepheid.awf;
 
 import java.util.HashMap;
-import java.util.HashSet;
-
 import org.apache.log4j.Logger;
 import com.agile.api.APIException;
 import com.agile.api.IAgileSession;
@@ -23,7 +21,7 @@ import com.agile.util.GenericUtilities;
  * - Regulatory Notification Required? attribute is not filled
  * - Regulatory Notification Required? attribute is filled as No and Justification attribute is not filled
  * During Post event,
- * If AWF is in Review status and 
+ * (This part of code is commented) If AWF is in Review status and 
  * 		- if all approvals and acknowledgements are done,immediately 
  * 			- autopromote AWF to Submit/Regulatory Affairs state if any Impact assessment attributes is filled as Yes (or)
  *			- autopromote AWF to Approve state if all Impact assessment attributes are filled as No
@@ -44,7 +42,6 @@ public class AutoPromoteAWF implements IEventAction {
 
 	ActionResult actionResult = new ActionResult();
 
-	@SuppressWarnings("unchecked")
 	@Override
 	public EventActionResult doAction(IAgileSession session, INode arg1, IEventInfo eventInfo) {
 
@@ -154,6 +151,10 @@ public class AutoPromoteAWF implements IEventAction {
 					} else {
 						String result = "";
 
+						/** Commented below part as the AWF should not be autopromoted from Review to Submit/RA/Approve based on Impact
+						 * assessment values
+						 */
+						/**
 						// If status is review
 						if (awf.getStatus().toString()
 								.equalsIgnoreCase(awfMessagesList.get("AWF_REVIEW_STATUS").toString())) {
@@ -226,58 +227,18 @@ public class AutoPromoteAWF implements IEventAction {
 								}
 							}
 
-						}
+						} else**/
 						//If status is Submit/Regulatory affairs
-						else if((awf.getStatus().toString()
+						if((awf.getStatus().toString()
 								.equalsIgnoreCase(awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString())))  {
 							
-							// Get pending Signoff details
-							HashMap<Object, Object> pendingSignOffDetails = GenericUtilities
-									.getPendingSignOffDetails(awf, awfMessagesList,awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString());
-							logger.debug("Pending SignOff Details are:" + pendingSignOffDetails);
-							
-							//if all approvals and acknowledgements are done,autopromote AWF to approve state
-							if((boolean) pendingSignOffDetails.get("approvalPending") == false
-									&& (boolean) pendingSignOffDetails.get("acknowledgementPending") == false
-									&& (int) pendingSignOffDetails
-											.get("totalNumOfApprovers") == (int) pendingSignOffDetails
-													.get("numOfApprovalsDone")
-									&& (int) pendingSignOffDetails
-											.get("totalNumOfAcknowledgers") == (int) pendingSignOffDetails
-													.get("numOfAcknowledgementsDone")) {
-								logger.info("Autopromoting AWF");
-								awf.changeStatus(
-										GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
-										false, "", false, false, null, null, null, null, false);
-								logger.info(awf+" is autopromoted to Approve");
-								result = awfMessagesList.get("SUCCESS").toString();
-								
-							}
-							// One or more approvals/acknowledgements are pending,hence awf is not
-							// autopromoted.
-							else {
-								HashSet<String> pendingApprovers = new HashSet<String>();
-								pendingApprovers = (HashSet<String>) pendingSignOffDetails.get("pendingApprovers");
-								logger.debug("Pending approvers are:" + pendingApprovers);
-								
-								if(pendingApprovers.size()>0) {
-									result = result+String.format(awfMessagesList.get("PENDING_APPROVAL").toString(), pendingApprovers);
-								}
-								
-								HashSet<String> pendingAcknowledgers = new HashSet<String>();
-								pendingAcknowledgers = (HashSet<String>) pendingSignOffDetails.get("pendingAcknowledgers");
-								logger.debug("Pending Acknowledgers are:" + pendingAcknowledgers);
-								
-								if(pendingAcknowledgers.size()>0) {
-									result = result+String.format(awfMessagesList.get("PENDING_ACKNOWLEDGEMENT").toString(), pendingAcknowledgers);
-
-								}
-							}
+							//Autopromote AWF from Submit/Regulatory Affairs to Approve if all approvals and acknowledgements are done
+							result = result+GenericUtilities.autoPromoteAWFFromSubmitToApprove(awf, awfMessagesList);
 							
 						}
-						// If status is not Review,dont autopromote
+						// If status is not Submit/Regulatory Affairs,dont autopromote
 						else {
-							result = String.format(awfMessagesList.get("INVALID_STATUS").toString(), awfMessagesList.get("AWF_REVIEW_STATUS").toString());
+							result = String.format(awfMessagesList.get("INVALID_STATUS").toString(), awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString());
 						}
 						actionResult = new ActionResult(ActionResult.STRING, result);
 						logger.debug("Result:" + actionResult);
