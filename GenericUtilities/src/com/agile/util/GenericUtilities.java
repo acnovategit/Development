@@ -1135,4 +1135,65 @@ public class GenericUtilities {
 		return reviewersMap;
 	}
 	
+	/**
+	 * This method autopromotes AWF from Submit/Regulatory affairs to Approve Status
+	 * @param awf
+	 * @param awfMessagesList
+	 * @return
+	 * @throws APIException
+	 */
+	@SuppressWarnings("unchecked")
+	public static String autoPromoteAWFFromSubmitToApprove(IChange awf,HashMap<Object, Object> awfMessagesList) throws APIException{
+		
+		String result = "";
+		
+		//Get Pending Signoff details at Submit/Regulatory affairs status
+		HashMap<Object, Object> pendingSignOffDetails = GenericUtilities
+				.getPendingSignOffDetails(awf, awfMessagesList,awfMessagesList.get("AWF_SUBMIT_RA_STATUS").toString());
+		logger.debug("Pending SignOff Details for "+awf+" is:" + pendingSignOffDetails);
+		
+		//if all approvals and acknowledgements are done,autopromote AWF to approve state
+		if((boolean) pendingSignOffDetails.get("approvalPending") == false
+				&& (boolean) pendingSignOffDetails.get("acknowledgementPending") == false
+				&& (int) pendingSignOffDetails
+						.get("totalNumOfApprovers") == (int) pendingSignOffDetails
+								.get("numOfApprovalsDone")
+				&& (int) pendingSignOffDetails
+						.get("totalNumOfAcknowledgers") == (int) pendingSignOffDetails
+								.get("numOfAcknowledgementsDone")) {
+			logger.info("Autopromoting AWF "+awf);
+			awf.changeStatus(
+					GenericUtilities.getStatus(awfMessagesList.get("AWF_APPROVE_STATUS").toString(), awf.getWorkflow()),
+					false, "", false, false, null, null, null, null, false);
+			logger.info(awf+" is autopromoted to Approve");
+			result = String.format(awfMessagesList.get("AUTOPROMOTE_SUCCESS").toString(), awf, awfMessagesList.get("AWF_APPROVE_STATUS").toString());
+			
+		}
+		// One or more approvals/acknowledgements are pending,hence awf is not
+		// autopromoted.
+		else {
+			
+			result = result+ String.format(awfMessagesList.get("AUTOPROMOTE_FAILED").toString(), awf, awfMessagesList.get("AWF_APPROVE_STATUS").toString());
+			HashSet<String> pendingApprovers = new HashSet<String>();
+			pendingApprovers = (HashSet<String>) pendingSignOffDetails.get("pendingApprovers");
+			logger.debug("Pending approvers for "+awf+" are:" + pendingApprovers);
+			
+			if(pendingApprovers.size()>0) {
+				result = result+String.format(awfMessagesList.get("PENDING_APPROVAL").toString(), pendingApprovers);
+			}
+			
+			HashSet<String> pendingAcknowledgers = new HashSet<String>();
+			pendingAcknowledgers = (HashSet<String>) pendingSignOffDetails.get("pendingAcknowledgers");
+			logger.debug("Pending Acknowledgers for"+awf+" are:" + pendingAcknowledgers);
+			
+			if(pendingAcknowledgers.size()>0) {
+				result = result+String.format(awfMessagesList.get("PENDING_ACKNOWLEDGEMENT").toString(), pendingAcknowledgers);
+
+			}
+		}
+		
+		return result;
+		
+	}
+	
 }
