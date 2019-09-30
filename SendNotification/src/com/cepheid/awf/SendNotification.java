@@ -28,7 +28,7 @@ import com.agile.util.GenericUtilities;
  * 
  * @author Supriya
  * This PX Queries for all the AWF objects in review status.
- * If any AWF object is in review for 5 days and all approvals are done,autopromote AWF after 5 days though acknowledgement is pending
+ * If any AWF object is in review for 5 days and all approvals are done,auto promote AWF after 5 days though acknowledgement is pending (This part of code is commented)
  * If any AWF object is in review for >=5 days and approval is pending,send notification after 5 days to approvers who are yet to provide approval till they provide approval
  *
  */
@@ -135,30 +135,42 @@ public class SendNotification implements IEventAction {
 					pendingSignOffDetails = GenericUtilities.getPendingSignOffDetails(awf, awfMessagesList,awfMessagesList.get("AWF_REVIEW_STATUS").toString());
 					logger.debug("Pending SignOff Details are:" + pendingSignOffDetails);
 
-					// Get Impact assessment attribute values of AWF
-					HashMap<Object, Object> impactAssessmentAttrValues = new HashMap<Object, Object>();
-					impactAssessmentAttrValues = GenericUtilities.getImpactAssessmentAttrValues(session,awf, eCRToAWFAttributeIdsMappingList);
-					logger.debug("Impact assessment attribute values of AWF are:" + impactAssessmentAttrValues);
-
-					// Get count of Impact assessment attribute values whose value is yes
-					int countOfYesAttrs = GenericUtilities.getCountOfImpactAssessmentAttributes(awfMessagesList.get("YES").toString(),
-							impactAssessmentAttrValues, session);
-					logger.debug("count of Yes Attributes is:" + countOfYesAttrs);
-
-					// If AWF is in review for 5 days and all approvals are done,autopromote AWF after 5 days though acknowledgement is pending
-					if (difference > Integer.parseInt(awfMessagesList.get("DURATION").toString())
-							&& (boolean) pendingSignOffDetails.get("approvalPending") == false
-							&& (int) pendingSignOffDetails.get("totalNumOfApprovers") == (int) pendingSignOffDetails
-									.get("numOfApprovalsDone")) {
-
-						GenericUtilities.autoPromoteAWF(countOfYesAttrs, awf, awfMessagesList);
-						logger.info("Autopromotion Successful");
-						
-					}
+					/** Commented below part as the AWF should not be autopromoted from Review to Submit/RA/Approve based on Impact
+					 * assessment values
+					 */
+					
+					/*
+					 * // Get Impact assessment attribute values of AWF HashMap<Object, Object>
+					 * impactAssessmentAttrValues = new HashMap<Object, Object>();
+					 * impactAssessmentAttrValues =
+					 * GenericUtilities.getImpactAssessmentAttrValues(session,awf,
+					 * eCRToAWFAttributeIdsMappingList);
+					 * logger.debug("Impact assessment attribute values of AWF are:" +
+					 * impactAssessmentAttrValues);
+					 * 
+					 * // Get count of Impact assessment attribute values whose value is yes int
+					 * countOfYesAttrs =
+					 * GenericUtilities.getCountOfImpactAssessmentAttributes(awfMessagesList.get(
+					 * "YES").toString(), impactAssessmentAttrValues, session);
+					 * logger.debug("count of Yes Attributes is:" + countOfYesAttrs);
+					 * 
+					 * // If AWF is in review for 5 days and all approvals are done,autopromote AWF
+					 * after 5 days though acknowledgement is pending if (difference >
+					 * Integer.parseInt(awfMessagesList.get("DURATION").toString()) && (boolean)
+					 * pendingSignOffDetails.get("approvalPending") == false && (int)
+					 * pendingSignOffDetails.get("totalNumOfApprovers") == (int)
+					 * pendingSignOffDetails .get("numOfApprovalsDone")) {
+					 * 
+					 * GenericUtilities.autoPromoteAWF(countOfYesAttrs, awf, awfMessagesList);
+					 * logger.info("Autopromotion Successful");
+					 * 
+					 * } else
+					 */
+					 
+					
 					// If AWF is in review for >=5 days and approval is pending,send notification to
 					// pending approvers after 5 days
-					else if (difference > Integer.parseInt(awfMessagesList.get("DURATION").toString())
-							&& (boolean) pendingSignOffDetails.get("approvalPending") == true) {
+					 if ((boolean) pendingSignOffDetails.get("approvalPending") == true) {
 
 						// Fetch approvers who are yet to provide signoff
 						HashSet<String> pendingApprovers = new HashSet<String>();
