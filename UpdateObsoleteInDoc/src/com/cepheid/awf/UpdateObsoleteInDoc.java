@@ -6,14 +6,20 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
+import com.agile.api.ExceptionConstants;
 import com.agile.api.IAgileSession;
 import com.agile.api.IAttachmentFile;
+import com.agile.api.ICell;
 import com.agile.api.IChange;
 import com.agile.api.ICheckoutable;
 import com.agile.api.IDataObject;
@@ -29,6 +35,7 @@ import com.agile.px.IEventInfo;
 import com.agile.px.IObjectEventInfo;
 import com.agile.util.GenericUtilities;
 import com.document.utility.DocumentUtilityAspose;
+
 
 public class UpdateObsoleteInDoc implements IEventAction {
 
@@ -48,6 +55,9 @@ public class UpdateObsoleteInDoc implements IEventAction {
     public static String ATTR_DOC_MSG;
     public static String MAIL_SUBJECT;
     public static String MAIL_HEADER;
+    public static String RELEASE_AUDIT_ERROR;
+    public static String DOC_HAS_REVISIONS_ERROR;
+    public static String ERROR_MSG_FINAL_OBS;
     public static HashMap<Object, Object> awfMessagesList; 
 	private String WATERMARK_TEXT ="Obsolete";
 	String sOldEffectiveDate;
@@ -66,10 +76,13 @@ public class UpdateObsoleteInDoc implements IEventAction {
 		String sDocuNumber = "";
 		String sFileHeaderText;
 		Map<String, List<String>> mapError = new HashMap<String, List<String>>();
+		String sUpdateMessage;
 
 	
 		
 		try {
+			
+			logger.info("--------------------------------------------------------------------------------");
 			GenericUtilities.initializeLogger(session);
 			awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 			 vInitializeConstants(session);
@@ -80,6 +93,7 @@ public class UpdateObsoleteInDoc implements IEventAction {
 			IObjectEventInfo info = (IObjectEventInfo) eventinfo;
 			eco = (IChange) info.getDataObject();
 			IStatus ecoStatus = eco.getStatus();
+			logger.info("Processing :"+eco.getName());
 			
 			HashMap<Object, Object> pendingSignOffDetails = GenericUtilities.getPendingSignOffDetails(eco, awfMessagesList, eco.getStatus().toString());
 			
@@ -87,7 +101,7 @@ public class UpdateObsoleteInDoc implements IEventAction {
 		    if(bSignoff)
 		    {
 		    	logger.info("Signoff Pending from approver"+String.join(",", pendingSignOffDetails.get("pendingApprovers").toString()));
-		    	actionResult = new ActionResult(ActionResult.STRING, "Pending Approvals from"+ String.join(",", pendingSignOffDetails.get("pendingApprovers").toString()) );
+		    	actionResult = new ActionResult(ActionResult.STRING, "Pending Approvals from "+ String.join(",", pendingSignOffDetails.get("pendingApprovers").toString()) );
 		    	
 		    	return new EventActionResult(eventinfo, actionResult);
 		    }
@@ -98,9 +112,9 @@ public class UpdateObsoleteInDoc implements IEventAction {
 			
 
 			if (!(ecoStatus.toString().equals(STATUS))) {
-				logger.error("ECO status is not in implemenet-Review Status");
+				logger.error("ECO status is not in Released Status");
 				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception("Current ECO status is "
-						+ ecoStatus.toString() + " Please move the AWF to Implement-Review Status"));
+						+ ecoStatus.toString() + " Please Release the AWF"));
 				return new EventActionResult(eventinfo, actionResult);
 			}
 
@@ -125,6 +139,8 @@ public class UpdateObsoleteInDoc implements IEventAction {
 				row = (IRow) changeHistoryIterator.next();
 				ecoNumber = row.getReferent();
 
+				logger.info("Previous change for the afftected item "+part.getName() + "is : "+ecoNumber.getName());
+				
 				ITable affectedItemsTable = ecoNumber.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 				Iterator<?> affectedItemsTableIterator = affectedItemsTable.iterator();
 
@@ -151,14 +167,29 @@ public class UpdateObsoleteInDoc implements IEventAction {
 									|| sFileName.endsWith(".pdf")) {
 								String sError = String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName());
 								lsErrorMessages.add(sError);
-								sErrorMessage +=String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName());;
+								sErrorMessage +=String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName())+".\n";
 							}
 							continue;
 						}
+						
+						
+						
 
 						if (((ICheckoutable) row).isCheckedOut()) {
 
 							logger.error("File " + sFileName + " already checked out.");
+							
+							List<String> lsErrorMessages1 = new ArrayList<String>();
+							lsErrorMessages1.add("File " + sFileName + " already checked out. This file is attached to part "+part.getName());
+							mapError.put( eco.getName().toString(),lsErrorMessages1);
+							
+							
+							String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+							String to = TO_ADDRESS;
+							String from = FROM_ADDRESS;
+							GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+							
+							
 							actionResult = new ActionResult(ActionResult.EXCEPTION,
 									new Exception("File " + sFileName + " already checked out."));
 							return new EventActionResult(eventinfo, actionResult);
@@ -167,15 +198,27 @@ public class UpdateObsoleteInDoc implements IEventAction {
 							// Check out the file
 							((ICheckoutable) row).checkOutEx();
 							logger.debug("Folder is Checked out");
+						
 							inStream = ((IAttachmentFile) row).getFile();
+							
 							// Check if the file is readable
 							sFilePath=sFilePath.trim();
 							sFileName = sFileName.trim();
 							if (bCheckFile(inStream, sFileName, sFilePath)) {
-
+                                if(DocumentUtilityAspose.bCheckDocHasRevisions(sFilePath + sFileName))
+                                {
+                                	String sError = DOC_HAS_REVISIONS_ERROR;
+									lsErrorMessages.add(sError);
+									sErrorMessage += DOC_HAS_REVISIONS_ERROR + ".\n";
+									((ICheckoutable) row).cancelCheckout();
+									logger.error(sFileName+" :"+DOC_HAS_REVISIONS_ERROR);
+									logger.info("File cancel checked out");
+									continue;
+                                }
+                                	
 								sFileHeaderText = DocumentUtilityAspose.readHeaderText(sFilePath + sFileName);
 								logger.info("File header is: " + sFileHeaderText);
-
+                              
 								sDocuNumber = sGetDocNumberAndOldEffectiveDate(sFileHeaderText);
 
 								if (sDocuNumber.equals("")) {
@@ -203,24 +246,28 @@ public class UpdateObsoleteInDoc implements IEventAction {
 								logger.debug("Folder is Checked in");
 
 							}
+							
 
 						
-						if (!(lsErrorMessages.isEmpty()))
-							mapError.put(ecoNumber.getName().toString() + "|" + part.getName().toString(),
-									lsErrorMessages);
+						
 
 					} // End of Attachments iterator while
+					
+					if (!(lsErrorMessages.isEmpty()))
+						mapError.put( part.getName().toString(),lsErrorMessages);
+					
 
 				} // End of Affected items iterator for change history
 
 			} // End of Affected items iteroator of the main change
 
 	
+			
 			HashMap<Object, Object> awfMessagesList = GenericUtilities.getAgileListValues(session, awfMessagesListName);
 			
-			
-	
-			
+			logger.info("Map error is -->" +mapError);
+			logger.info("Error message"+sErrorMessage );
+           sUpdateMessage = "Attachment of Previous revision updated with Obsolete Watermark";
 			if (!mapError.isEmpty()) {
 
 				String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
@@ -233,35 +280,45 @@ public class UpdateObsoleteInDoc implements IEventAction {
 				  DOC_UPDATE_ERROR_NO);
 				  eco.setValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_ERROR").toString()),
 						  sEffectivityUpdateMsg+"\n"+ sErrorMessage);
+				  
+				  sUpdateMessage = ERROR_MSG_FINAL_OBS;  
 				 
 
-			} /*
-				 * else {
-				 * 
-				 * eco.setValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_SUCCESFUL").toString()),
-				 * DOC_UPDATE_ERROR_YES);
-				 * eco.setValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_ERROR").toString()), "");
-				 * 
-				 * }
-				 */
-			
-			String sEffectivityUpdateSucess = eco.getValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_SUCCESFUL").toString())).toString();
-			
-			if(sEffectivityUpdateSucess.equalsIgnoreCase(DOC_UPDATE_ERROR_YES))
-			{   
-				Object [] nullObjectList = null;
-					IStatus nextstatus = eco.getDefaultNextStatus();
-					logger.info("Auto-promoting to"+ nextstatus.getName());
-				
-					eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
-										
-				
-				
-			}
-			
+			} 
+		
+	
 			
 
 		} catch (Exception e) {
+		
+			try {
+			if (((ICheckoutable) row).isCheckedOut()) {
+				((ICheckoutable) row).cancelCheckout();
+				logger.info("File cancel checked out");
+			
+			}
+			
+			List<String> lsErrorMessages = new ArrayList<String>();
+			lsErrorMessages.add(e.getMessage()+e.getCause().toString()+e.getStackTrace().toString());
+			mapError.put( eco.getName().toString(),lsErrorMessages);
+			
+			
+			String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+			String to = TO_ADDRESS;
+			String from = FROM_ADDRESS;
+			GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+			
+			}
+			catch (APIException ap)
+			{
+				logger.error("API Exception :"+ e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
+				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
+				return new EventActionResult(eventinfo, actionResult);
+			}
+			
+			
+			
+			
 			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
 			e.printStackTrace();
 			logger.error(" Execution of Extension failed due to" + e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
@@ -271,7 +328,7 @@ public class UpdateObsoleteInDoc implements IEventAction {
 		
 		logger.info("Attachment of Previous revision updated with Obsolete Watermark");
 		
-		  actionResult = new ActionResult(ActionResult.STRING,"Attachment of Previous revision updated with Obsolete Watermark");
+		  actionResult = new ActionResult(ActionResult.STRING,sUpdateMessage);
 		 
 
 		
@@ -283,6 +340,9 @@ public class UpdateObsoleteInDoc implements IEventAction {
 	}
 
 	
+
+	
+	
 	/**
 	 * @param session
 	 * @throws APIException
@@ -291,8 +351,8 @@ public class UpdateObsoleteInDoc implements IEventAction {
 	{
 		
 		FILEPATH = awfMessagesList.get("VAULT_FILEPATH").toString();
-		STATUS = awfMessagesList.get("AWF_IMPLEMENT_REVIEW_STATUS").toString();
-		ERROR_MSG_IMPROPER_FILETYPE = awfMessagesList.get("ERROR_MSG_IMPROPER_FILETYPE").toString();
+		STATUS = awfMessagesList.get("AWF_RELEASED_STATUS").toString();
+		ERROR_MSG_IMPROPER_FILETYPE = awfMessagesList.get("EROR_MSG_IMPROPER_FILETYPE_OBS").toString();
 		ERROR_MSG_NO_DOC_NUMBER_INFILE = awfMessagesList.get("ERROR_MSG_NO_DOC_NUMBER_INFILE").toString();
 		ERROR_MSG_NO_EFFECTIVE_DATE_IN_FILE = awfMessagesList.get("ERROR_MSG_NO_EFFECTIVE_DATE_IN_FILE").toString();
 		INFO_SKIP_DOCUMENT_FROM_UPDATE = awfMessagesList.get("INFO_SKIP_DOCUMENT_FROM_UPDATE").toString();
@@ -304,6 +364,9 @@ public class UpdateObsoleteInDoc implements IEventAction {
 	    ATTR_DOC_MSG = awfMessagesList.get("DOCUMENT_UPDATE_ERROR").toString();
 	 	MAIL_SUBJECT=	awfMessagesList.get("AWF_OBS_MAIL_SUBJECT").toString();
 	 	MAIL_HEADER= awfMessagesList.get("AWF_MAIL_HEADER").toString();
+	 	RELEASE_AUDIT_ERROR = awfMessagesList.get("RELEASE_AUDIT_ERROR").toString();
+	 	DOC_HAS_REVISIONS_ERROR = awfMessagesList.get("DOC_HAS_REVISIONS_ERROR").toString();
+	 	ERROR_MSG_FINAL_OBS =awfMessagesList.get("ERROR_MSG_FINAL_OBS").toString();
 	}
 	
 	
