@@ -25,7 +25,7 @@ import com.agile.util.GenericUtilities;
  * If Current status is Review,this PX fetches the users under Reviewers attribute on AWF cover page.
  * If the user belongs to Quality function,he is added as Approver and remaining users are added as Acknowledgers at Review status
  * If Current Status is Submit/Regulatory affairs,this PX fetches the users under Approvers attribute on AWF cover page and adds them as 
- * approvers at Approve Status.
+ * approvers at Approve Status.Also if there are no approvers/acknowledgers at Submit/Regulatory affairs,AWF is autopromoted to Approve
  * If Current Status is Approve,this PX fetches the users under Implementation Reviewers attribute on AWF cover page 
  * and adds them as Approvers at Implement-Review state(Currently this part of code is commented) 
  * 
@@ -272,8 +272,12 @@ public class SetReviewersOnAWF implements IEventAction {
 							}
 							
 						}
+						
+						//Autopromote AWF from Submit/Regulatory Affairs to Approve if there are no approvers/acknowledgers at Submit/Regulatory Affairs
+						result = result+GenericUtilities.autoPromoteAWFFromSubmitToApprove(AWF, awfMessagesList);
+						
 					} 
-					/**Disabled below part as the Implementation-Reviewers attribute has been disabled**/
+					/**Commented below part as the Implementation-Reviewers attribute has been disabled**/
 					/**
 					// If status is Approve
 					else if (currentStatus.toString()
