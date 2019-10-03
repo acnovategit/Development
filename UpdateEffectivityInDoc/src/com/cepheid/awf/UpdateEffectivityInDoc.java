@@ -6,14 +6,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
 import com.agile.api.IAgileSession;
 import com.agile.api.IAttachmentFile;
+import com.agile.api.ICell;
 import com.agile.api.IChange;
 import com.agile.api.ICheckoutable;
 import com.agile.api.IDataObject;
@@ -87,7 +91,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	Map<String,List<String>> mapError= new HashMap<String,List<String>>();
 	IChange eco = null;
 	IObjectEventInfo info;
-	String sUpdateMessage;
+	String sUpdateMessage = null;
 
 	try {
 		logger.info("--------------------------------------------------------------------");
@@ -198,7 +202,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 						sFileHeaderText=DocumentUtilityAspose.readHeaderText(sFilePath+sFileName);
 				        logger.info("File header is: "+sFileHeaderText);
 				        
-				       String sDocuNumber =  sGetDocNumberAndOldEffectiveDate(sFileHeaderText);
+				       String sDocuNumber =  sGetDocNumberAndOldEffectiveDate(sFileHeaderText,sFileName,part.getName());
                        
 				       if(sDocuNumber.equals(""))
 				       {
@@ -265,15 +269,26 @@ public class UpdateEffectivityInDoc implements IEventAction {
         
 	
 		  Map<?, ?> results = eco.audit();
-		  if(!results.isEmpty())
-		  {
-		  List<String> lsErrorMessages = new ArrayList<String>();
-		  lsErrorMessages.add(RELEASE_AUDIT_ERROR);
-		  mapError.put( eco.getName().toString(),lsErrorMessages);
-		  sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
+		  Set set = results.entrySet();
+		  // Get an iterator for the set
+		  Iterator it = set.iterator();
+		  // Iterate through the cells and print each cell name and exception
+		  while (it.hasNext()) {
+		  Map.Entry entry = (Map.Entry)it.next();
+		  ICell cell = (ICell)entry.getKey();
+		  if(cell != null) {
+			  List<String> lsErrorMessages = new ArrayList<String>();
+			  lsErrorMessages.add(RELEASE_AUDIT_ERROR);
+			  mapError.put( eco.getName().toString(),lsErrorMessages);
+			  sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
+		  } else {
+		 logger.info(" Audit succesfull.Cell : No associated data cell");
+		  }
 		  
+	
 		  
 		  }
+		  
 		
 		
 		sUpdateMessage = "Effectivity Date updated and set to "+sNewEffectiveDate;
@@ -314,8 +329,39 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			Object [] nullObjectList = null;
 				IStatus nextstatus = eco.getDefaultNextStatus();
 				logger.info("Auto-promoting to"+ nextstatus.getName());
-	
+
+		//		eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
+					try {
 				eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
+			
+	}
+	catch (Exception e)
+	{
+		 List<String> lsErrorMessages = new ArrayList<String>();
+		  lsErrorMessages.add(RELEASE_AUDIT_ERROR);
+		  mapError.put( eco.getName().toString(),lsErrorMessages);
+		  sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
+		 
+		  
+			if(!mapError.isEmpty())
+			{
+			
+			 String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+			 String to = TO_ADDRESS;
+			 String from = FROM_ADDRESS;
+			 
+			 logger.info("TO" +to);
+			 logger.info("FROM"+from);
+			 
+			 
+			 GenericUtilities.sendMail(session, from,to, sHTML, String.format(MAIL_HEADER, eco.getName()));
+			 eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
+			 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sErrorMessage);
+			 sUpdateMessage = String.format(ERROR_MSG_FINAL_EFF, sNewEffectiveDate);
+			}
+		  
+		  
+	}
 				logger.info("AWF Released");
 		}
 		
@@ -329,22 +375,30 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				logger.info("File cancel checked out");
 			
 			}
-			
+			logger.error("Exception :"+ e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
+			sUpdateMessage = String.format(ERROR_MSG_FINAL_EFF, sNewEffectiveDate);
+			logger.info("Update message");
 			List<String> lsErrorMessages = new ArrayList<String>();
-			lsErrorMessages.add(e.getMessage()+e.getCause().toString()+e.getStackTrace().toString());
+			logger.info("List created"+lsErrorMessages.size());
+			lsErrorMessages.add(e.getMessage().toString());
+			logger.info("Added in list");
 			mapError.put( eco.getName().toString(),lsErrorMessages);
-			
-			
+			logger.info("Added in map");
+			sErrorMessage = e.getMessage().toString();
 			String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
 			String to = TO_ADDRESS;
 			String from = FROM_ADDRESS;
+			logger.info("Sending mail");
 			GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+			 eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
+			 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sErrorMessage);
+			 
 			
 			}
 			catch (APIException ap)
 			{
 				logger.error("API Exception :"+ e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
-				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
+				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(sUpdateMessage));
 				return new EventActionResult(eventinfo, actionResult);
 			}
 			
@@ -464,7 +518,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	 * @param sHeaderData
 	 * @return
 	 */
-	public String sGetDocNumberAndOldEffectiveDate(String sHeaderData)
+	public String sGetDocNumberAndOldEffectiveDate(String sHeaderData, String sFileName, String sPart) throws Exception
 	{
 
 	if(sHeaderData.contains("\n"))
@@ -486,7 +540,10 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			{
 				t = s.split(":");
 			}
-			
+			else
+			{
+				throw new Exception("Effective Date in the header of the attachment "+sFileName+"For part "+sPart+"  does not contain a ':' to distinguish");
+			}
 			sOldEffectiveDate = t[1].trim();
 			logger.info("OldEffective date:"+sOldEffectiveDate);
 	
@@ -497,7 +554,10 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			{
 				docarr = s.split(":");
 			}
-			
+			else
+			{
+				throw new Exception("Document Number in the header of the attachment "+sFileName+"For part "+sPart+"  does not contain a ':' to distinguish");
+			}
 			sDocuNumber = docarr[1];
 			sDocuNumber = sDocuNumber.trim();
 			logger.info("Document Number"+sDocuNumber);

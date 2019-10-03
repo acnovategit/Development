@@ -130,12 +130,15 @@ public class UpdateObsoleteInDoc implements IEventAction {
 
 				Iterator<?> changeHistoryIterator = changeHistoryTable.iterator();
 
+				changeHistoryIterator.next();
 				if (!(changeHistoryIterator.hasNext())) {
 					logger.info("No previous revision for affected item" + part.getName());
 					continue;
 
 				}
 
+				
+				
 				row = (IRow) changeHistoryIterator.next();
 				ecoNumber = row.getReferent();
 
