@@ -23,6 +23,8 @@ import com.agile.util.GenericUtilities;
  * -copies Description,change analyst and Impact/Risk/Justification from eCR to VWF,
  * -adds VWF to the relationship tab of ECR
  * -VWF creation is possible only when eCR is in Unassigned/Pending/Started
+ * -eCR Workflow is set on workflow attribute of eCR if workflow is not assigned
+ * -eCR is moved from Pending to Started status after VWF creation
  */
 
 public class GenerateVWFFromECR implements ICustomAction {
@@ -116,6 +118,29 @@ public class GenerateVWFFromECR implements ICustomAction {
 										vwf.toString(), eCR.toString());
 							}
 
+							//If workflow is not assigned,assign eCR Workflow
+							if(eCRWorkflow==null || eCRWorkflow.equals("")) {
+								eCR.setValue(Integer.parseInt(awfMessagesList.get("WORKFLOW_ATTRID").toString()), awfMessagesList.get("ECR_WORKFLOW_NAME").toString());
+							}
+							
+							//Get eCR status 
+							status = eCR.getStatus();
+							logger.debug("eCR Status is:"+status);
+							
+							if(status!=null) {
+								//If eCR is in Pending status, autopromote eCR from Pending to Started status
+								if (status.toString().equalsIgnoreCase(awfMessagesList.get("PENDING_STATUS").toString())) {
+									logger.debug("Autopromoting " + eCR + " to Started Status");
+									eCR.changeStatus(
+											GenericUtilities.getStatus(awfMessagesList.get("ECR_STARTED_STATUS").toString(),
+													eCR.getWorkflow()),
+											false, "", false, false, null, null, null, null, false);
+									logger.debug(eCR + " autopromoted to Started Status");
+								}
+							}
+							
+							
+						
 						} else {
 							result = awfMessagesList.get("OBJ_CREATION_FAILED").toString();
 						}
