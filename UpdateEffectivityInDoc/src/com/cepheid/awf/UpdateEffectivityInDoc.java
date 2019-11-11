@@ -6,13 +6,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import com.agile.api.APIException;
 import com.agile.api.ChangeConstants;
 import com.agile.api.IAgileSession;
@@ -64,6 +64,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
     public static String LIFECYCLE_OBSOLETE;
     public static HashMap<Object, Object> awfMessagesList; 
 	public static String RELEASE_AUDIT_ERROR;
+	public static String DOCUMENT_NUMBER_TYPES;
     String sNewEffectiveDate;
 	String sOldEffectiveDate;
 
@@ -134,7 +135,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
         }
         ITable affectedItems=eco.getTable(ChangeConstants.TABLE_AFFECTEDITEMS);
 		Iterator<?> affectedItemsIterator;
-		affectedItemsIterator=affectedItems.iterator();		
+		affectedItemsIterator=affectedItems.iterator();	
         
 		while(affectedItemsIterator.hasNext()){
 			row = (IRow) affectedItemsIterator.next();
@@ -143,14 +144,38 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			sEffectiveDate= DocumentUtilityAspose.now();
 		    sLifecycle = row.getValue(ChangeConstants.ATT_AFFECTED_ITEMS_LIFECYCLE_PHASE).toString();
 			logger.info("Lifecycle of the afected item" + part.getName() + " is:" +sLifecycle);	   
+			//Set the Effective Date as todays Date
+			
+			String dateEffectivity = GenericUtilities.getDateBasedOnTimeZoneAndFormat(
+					awfMessagesList.get("TIME_ZONE").toString(), awfMessagesList.get("DATE_FORMAT").toString(),
+					new Date());
+			logger.debug("Date based on PST Timezone is:" + dateEffectivity);
+
+				
+			String dateOldRevEnd = GenericUtilities.getDateBasedOnTimeZoneAndFormat(
+					awfMessagesList.get("TIME_ZONE").toString(), awfMessagesList.get("DATE_FORMAT").toString(),
+					yesterday());
+			logger.debug("old Rev End date:" + dateOldRevEnd);
+		
+			List<String> lsErrorMessages = new ArrayList<String>();
+			try {
+            row.setValue(ChangeConstants.ATT_AFFECTED_ITEMS_OBSOLETE_DATE, dateOldRevEnd);
+			row.setValue(ChangeConstants.ATT_AFFECTED_ITEMS_EFFECTIVE_DATE, dateEffectivity);
+			}
+			catch (Exception e)
+			{
+				lsErrorMessages.add("Exception while setting Old Rev End Date or Effective Date:"+e.getMessage().toString()+" for Part: "+part.getName());
+				logger.error(e.getMessage()+e.getCause());
+				sErrorMessage+="Exception while setting Old Rev End Date or Effective Date:"+e.getMessage().toString()+" for Part: "+part.getName();
+				mapError.put(part.getName().toString(),lsErrorMessages);
+				continue;
+			}
 			//Iterate Attachments Table
 			ITable attachments=part.getTable(ItemConstants.TABLE_ATTACHMENTS);
 			Iterator<?> attachmentsIterator=attachments.iterator();
-			List<String> lsErrorMessages = new ArrayList<String>();
+	
 			
 			while(attachmentsIterator.hasNext()){
-				
-			
 				sOldEffectiveDate ="";
 				row = (IRow) attachmentsIterator.next();
 				IFileFolder fileFolder = (IFileFolder)row.getReferent();
@@ -158,9 +183,9 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				logger.debug("File Name is :" +sFileName);
 				logger.info("Checking file type");
 				//Check the File type. If invalid file type throw an error and skip this attachment
-				if(!((sFileName.endsWith(".docx") ||(sFileName.endsWith(".doc")))))
+				if(!((sFileName.endsWith(".docx") ||(sFileName.endsWith(".doc")||sFileName.endsWith("DOCX")||sFileName.endsWith("DOC")))))
 				{				
-                	if(sFileName.endsWith(".xlsx")||sFileName.endsWith(".xls")||sFileName.endsWith(".pdf"))
+                	if(sFileName.endsWith(".xlsx")||sFileName.endsWith(".xls")||sFileName.endsWith(".pdf")||sFileName.endsWith("PDF")||sFileName.endsWith("XLS")||sFileName.endsWith("XLSX"))
                 	{
                 		String sError = String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName());
                 		lsErrorMessages.add(sError);
@@ -189,26 +214,41 @@ public class UpdateEffectivityInDoc implements IEventAction {
 					
 				}
 				else {
-				// Check out the file
+				
+					
+					// Check out the file
+					
 					((ICheckoutable)row).checkOutEx();
 					logger.debug("Folder is Checked out");
 					inStream = ((IAttachmentFile) row).getFile();
 				   //Check if the file is readable and store the file at the vault location
 					if(bCheckFile(inStream,sFileName,sFilePath))
 				    {
+						String sDocuNumber="";
 						DocumentUtilityAspose.vAcceptAllRevisions(sFilePath+sFileName);
-						
+						try {
 						
 						sFileHeaderText=DocumentUtilityAspose.readHeaderText(sFilePath+sFileName);
 				        logger.info("File header is: "+sFileHeaderText);
-				        
-				       String sDocuNumber =  sGetDocNumberAndOldEffectiveDate(sFileHeaderText,sFileName,part.getName());
-                       
+				        			        
+				        sDocuNumber =  sGetDocNumberAndOldEffectiveDate(sFileHeaderText,sFileName,part.getName());
+						}
+						catch(Exception e)
+						{
+							logger.debug("Error is"+e.getMessage()+e.getLocalizedMessage());
+							String sError = String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName());;
+	                		lsErrorMessages.add(sError);
+	                		sErrorMessage += String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName())+".\n"; 
+	                		((ICheckoutable) row).cancelCheckout();
+				    	     logger.info("File cancel checked out");
+				    		continue;
+						}
+				       
 				       if(sDocuNumber.equals(""))
 				       {
-				    		String sError = String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,part.getName());;
+				    		String sError = String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName());;
 	                		lsErrorMessages.add(sError);
-	                		sErrorMessage += String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,part.getName())+".\n"; 
+	                		sErrorMessage += String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName())+".\n"; 
 	                		((ICheckoutable) row).cancelCheckout();
 				    	     logger.info("File cancel checked out");
 				    		continue;
@@ -244,7 +284,9 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				    		continue; 
 				       }
 				     	       
-				    	 sNewEffectiveDate = DocumentUtilityAspose.now();
+				    	 sNewEffectiveDate = GenericUtilities.getDateBasedOnTimeZoneAndFormat(
+									awfMessagesList.get("TIME_ZONE").toString(), awfMessagesList.get("DATE_FORMAT_WITHOUT_TIMEZONE").toString(),
+									new Date());//DocumentUtilityAspose.now();
 				    	logger.info("New Date: "+sNewEffectiveDate);
 				    	
 				    	DocumentUtilityAspose.replaceTextInHeader(sFilePath+sFileName, sOldEffectiveDate, sNewEffectiveDate);
@@ -256,7 +298,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 				    
 				    
 				    }
-				  
+				
 				
 				}
 				
@@ -284,10 +326,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		  } else {
 		 logger.info(" Audit succesfull.Cell : No associated data cell");
 		  }
-		  
-	
-		  
-		  }
+	  }
 		  
 		
 		
@@ -326,49 +365,51 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		
 		if(sEffectivityUpdateSucess.equalsIgnoreCase(DOC_UPDATE_ERROR_YES))
 		{   
-			Object [] nullObjectList = null;
+							
+				Object [] nullObjectList = null;
 				IStatus nextstatus = eco.getDefaultNextStatus();
 				logger.info("Auto-promoting to"+ nextstatus.getName());
 
-		//		eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
+		
 					try {
-				eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
-			
-	}
-	catch (Exception e)
-	{
-		 List<String> lsErrorMessages = new ArrayList<String>();
-		  lsErrorMessages.add(RELEASE_AUDIT_ERROR);
-		  mapError.put( eco.getName().toString(),lsErrorMessages);
-		  sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
-		 
-		  
-			if(!mapError.isEmpty())
-			{
-			
-			 String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
-			 String to = TO_ADDRESS;
-			 String from = FROM_ADDRESS;
-			 
-			 logger.info("TO" +to);
-			 logger.info("FROM"+from);
-			 
-			 
-			 GenericUtilities.sendMail(session, from,to, sHTML, String.format(MAIL_HEADER, eco.getName()));
-			 eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
-			 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sErrorMessage);
-			 sUpdateMessage = String.format(ERROR_MSG_FINAL_EFF, sNewEffectiveDate);
+						logger.info("Releasing the AWF"+eco.getName());
+						
+		    		eco.changeStatus(nextstatus, false, null,false, false, nullObjectList, nullObjectList, nullObjectList, false);
+				     logger.info("AWF Released"+eco.getName());
+						}
+					catch (Exception e)
+							{
+							logger.info("Exception while releasing AWF"+eco.getName());	
+							logger.info("Exception::"+e.getMessage() + e.getCause() +e.getStackTrace());
+							List<String> lsErrorMessages = new ArrayList<String>();
+							lsErrorMessages.add(RELEASE_AUDIT_ERROR);
+							mapError.put( eco.getName().toString(),lsErrorMessages);
+							sErrorMessage +=RELEASE_AUDIT_ERROR+ ".\n";
+				 			if(!mapError.isEmpty())
+							{
+					
+								String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
+								String to = TO_ADDRESS;
+									String from = FROM_ADDRESS;
+					 
+									logger.info("TO" +to);
+									logger.info("FROM"+from);
+					 					 
+					 GenericUtilities.sendMail(session, from,to, sHTML, String.format(MAIL_HEADER, eco.getName()));
+					 eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
+					 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sErrorMessage);
+					 sUpdateMessage = String.format(ERROR_MSG_FINAL_EFF, sNewEffectiveDate);
+					}
+				  
+				  
 			}
-		  
-		  
-	}
-				logger.info("AWF Released");
+			
 		}
 		
 				
 		
 	} catch (Exception e) {
-	
+	logger.info("Exception::"+e.getMessage() + e.getCause() +e.getStackTrace());
 		try {
 			if (((ICheckoutable) row).isCheckedOut()) {
 				((ICheckoutable) row).cancelCheckout();
@@ -384,7 +425,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			logger.info("Added in list");
 			mapError.put( eco.getName().toString(),lsErrorMessages);
 			logger.info("Added in map");
-			sErrorMessage = e.getMessage().toString();
+			sErrorMessage+= e.getMessage().toString();
 			String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
 			String to = TO_ADDRESS;
 			String from = FROM_ADDRESS;
@@ -443,6 +484,7 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	 	ERROR_MSG_FINAL_EFF=awfMessagesList.get("ERROR_MSG_FINAL_EFF").toString();
 	 	LIFECYCLE_OBSOLETE =awfMessagesList.get("OBSOLETE_LIFECYCLE_PHASE").toString();
 	 	RELEASE_AUDIT_ERROR = awfMessagesList.get("RELEASE_AUDIT_ERROR").toString();
+	 	DOCUMENT_NUMBER_TYPES =awfMessagesList.get("DOCUMENT_NUMBER_TYPES").toString();
 	}
 	
 	
@@ -520,17 +562,22 @@ public class UpdateEffectivityInDoc implements IEventAction {
 	 */
 	public String sGetDocNumberAndOldEffectiveDate(String sHeaderData, String sFileName, String sPart) throws Exception
 	{
+  boolean bDocupdate = false;
+  String[] headerDataSplit = null;
 
-	if(sHeaderData.contains("\n"))
-	{
-		logger.info("Header data contains \n");
-	}
-	if (sHeaderData.contains("\r"))
+  if(sHeaderData.contains("\r"))
 	{
 		logger.info("Header data contains \r");
+		headerDataSplit = sHeaderData.split("\r");
 	}
-	
-	String[] headerDataSplit = sHeaderData.split("\r");
+  else if (sHeaderData.contains("\n"))
+	{
+		logger.info("Header data contains \n");
+		headerDataSplit = sHeaderData.split("\n");
+	}
+  else
+	  headerDataSplit = sHeaderData.split("\r");
+
 	String[] t = null, docarr = null;
 	String sDocuNumber = "";
 	for (String s : headerDataSplit) {
@@ -548,24 +595,26 @@ public class UpdateEffectivityInDoc implements IEventAction {
 			logger.info("OldEffective date:"+sOldEffectiveDate);
 	
 		}
-	  
-		if(s.contains("Document Number")){
+	 
+		
+String sDoctypes[] = DOCUMENT_NUMBER_TYPES.split(",");
+   for(int i=0;i<sDoctypes.length;i++)
+   {
+	   	if(s.contains(sDoctypes[i])){
 			if (s.contains(":"))
 			{
 				docarr = s.split(":");
-			}
-			else
-			{
-				throw new Exception("Document Number in the header of the attachment "+sFileName+"For part "+sPart+"  does not contain a ':' to distinguish");
-			}
 			sDocuNumber = docarr[1];
 			sDocuNumber = sDocuNumber.trim();
-			logger.info("Document Number"+sDocuNumber);
-	
+			logger.info("Document Number:"+sDocuNumber);
+			bDocupdate = true;
+			}
 		} 
 	
-	
-	
+   }
+   
+   if (!bDocupdate)
+	   throw new Exception("Couldnt find Document number in the attachment"+sFileName+" For part "+sPart);
 	}
 	
 	return sDocuNumber;
@@ -622,5 +671,16 @@ public class UpdateEffectivityInDoc implements IEventAction {
 		outStream.close();
 		return targetFile;
 	}
+	
+	/**
+	 * Returns Yesterdays Date
+	 * @return
+	 */
+	private Date yesterday() {
+	    final Calendar cal = Calendar.getInstance();
+	    cal.add(Calendar.DATE, -1);
+	    return cal.getTime();
+	}
+	
 	
 }
