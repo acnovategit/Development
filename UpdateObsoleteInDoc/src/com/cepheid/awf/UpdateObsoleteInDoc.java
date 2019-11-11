@@ -61,6 +61,7 @@ public class UpdateObsoleteInDoc implements IEventAction {
     public static HashMap<Object, Object> awfMessagesList; 
 	private String WATERMARK_TEXT ="Obsolete";
 	String sOldEffectiveDate;
+	public static String DOCUMENT_NUMBER_TYPES;
 	static org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(UpdateObsoleteInDoc.class);
 	
 
@@ -165,15 +166,17 @@ public class UpdateObsoleteInDoc implements IEventAction {
 						row = (IRow) attachmentsTableIterator.next();
 						sFileName = row.getName();
 
-						if (!((sFileName.endsWith(".docx") || (sFileName.endsWith(".doc"))))) {
-							if (sFileName.endsWith(".xlsx") || sFileName.endsWith(".xls")
-									|| sFileName.endsWith(".pdf")) {
-								String sError = String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName());
-								lsErrorMessages.add(sError);
-								sErrorMessage +=String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName())+".\n";
-							}
-							continue;
-						}
+						//Check the File type. If invalid file type throw an error and skip this attachment
+						if(!((sFileName.endsWith(".docx") ||(sFileName.endsWith(".doc")||sFileName.endsWith("DOCX")||sFileName.endsWith("DOC")))))
+						{				
+		                	if(sFileName.endsWith(".xlsx")||sFileName.endsWith(".xls")||sFileName.endsWith(".pdf")||sFileName.endsWith("PDF")||sFileName.endsWith("XLS")||sFileName.endsWith("XLSX"))
+		                	{
+		                		String sError = String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName());
+		                		lsErrorMessages.add(sError);
+		                		sErrorMessage += String.format(ERROR_MSG_IMPROPER_FILETYPE,sFileName,part.getName()) +".\n"; 
+		                	}
+		                	continue;	
+		                }
 						
 						
 						
@@ -221,13 +224,23 @@ public class UpdateObsoleteInDoc implements IEventAction {
                                 	
 								sFileHeaderText = DocumentUtilityAspose.readHeaderText(sFilePath + sFileName);
 								logger.info("File header is: " + sFileHeaderText);
-                              
-								sDocuNumber = sGetDocNumberAndOldEffectiveDate(sFileHeaderText);
-
+								try {
+								sDocuNumber = sGetDocNumberAndOldEffectiveDate(sFileHeaderText,sFileName,part.getName());
+								}
+								catch(Exception e)
+								{
+									logger.debug("Error is"+e.getMessage()+e.getLocalizedMessage());
+									String sError = String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName());;
+			                		lsErrorMessages.add(sError);
+			                		sErrorMessage += String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName())+".\n"; 
+			                		((ICheckoutable) row).cancelCheckout();
+						    	     logger.info("File cancel checked out");
+						    		continue;
+								}
 								if (sDocuNumber.equals("")) {
-									String sError = ERROR_MSG_NO_DOC_NUMBER_INFILE;
+									String sError = String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName());;
 									lsErrorMessages.add(sError);
-									sErrorMessage += ERROR_MSG_NO_DOC_NUMBER_INFILE + ".\n";
+									sErrorMessage += String.format(ERROR_MSG_NO_DOC_NUMBER_INFILE,sFileName,part.getName())+".\n"; 
 									((ICheckoutable) row).cancelCheckout();
 									logger.info("File cancel checked out");
 									continue;
@@ -293,7 +306,7 @@ public class UpdateObsoleteInDoc implements IEventAction {
 			
 
 		} catch (Exception e) {
-		
+		logger.error("Exception:" +e.getMessage()+e.getLocalizedMessage());
 			try {
 			if (((ICheckoutable) row).isCheckedOut()) {
 				((ICheckoutable) row).cancelCheckout();
@@ -302,27 +315,33 @@ public class UpdateObsoleteInDoc implements IEventAction {
 			}
 			
 			List<String> lsErrorMessages = new ArrayList<String>();
-			lsErrorMessages.add(e.getMessage()+e.getCause().toString()+e.getStackTrace().toString());
+			lsErrorMessages.add(e.getMessage());
 			mapError.put( eco.getName().toString(),lsErrorMessages);
 			
 			
 			String sHTML = GenericUtilities.sCreateHTMLtoSend(mapError, eco.getName(),MAIL_SUBJECT);
 			String to = TO_ADDRESS;
 			String from = FROM_ADDRESS;
+			logger.info("Sending Mail with errors");
 			GenericUtilities.sendMail(session, from, to, sHTML,String.format(MAIL_HEADER, eco.getName()));
+			sErrorMessage += e.getMessage().toString(); 
+			logger.info("Mail sent..Updating Error attributes on Cover page:"+sErrorMessage);
+			String sEffectivityUpdateMsg = eco.getValue(Integer.parseInt(awfMessagesList.get("DOCUMENT_UPDATE_ERROR").toString())).toString();
 			
+			eco.setValue(Integer.parseInt(ATTR_DOC_SUCCESS),DOC_UPDATE_ERROR_NO);
+			 eco.setValue(Integer.parseInt(ATTR_DOC_MSG), sEffectivityUpdateMsg+"\n"+sErrorMessage);
 			}
 			catch (APIException ap)
 			{
 				logger.error("API Exception :"+ e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
-				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
+				actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(ap));
 				return new EventActionResult(eventinfo, actionResult);
 			}
 			
 			
 			
 			
-			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e));
+			actionResult = new ActionResult(ActionResult.EXCEPTION, new Exception(e.getMessage()));
 			e.printStackTrace();
 			logger.error(" Execution of Extension failed due to" + e.getMessage() +e.toString()+e.getCause()+e.getStackTrace());
 			return new EventActionResult(eventinfo, actionResult);
@@ -370,8 +389,8 @@ public class UpdateObsoleteInDoc implements IEventAction {
 	 	RELEASE_AUDIT_ERROR = awfMessagesList.get("RELEASE_AUDIT_ERROR").toString();
 	 	DOC_HAS_REVISIONS_ERROR = awfMessagesList.get("DOC_HAS_REVISIONS_ERROR").toString();
 	 	ERROR_MSG_FINAL_OBS =awfMessagesList.get("ERROR_MSG_FINAL_OBS").toString();
+		DOCUMENT_NUMBER_TYPES =awfMessagesList.get("DOCUMENT_NUMBER_TYPES").toString();
 	}
-	
 	
 	
 	
@@ -380,46 +399,66 @@ public class UpdateObsoleteInDoc implements IEventAction {
 	 * @param sHeaderData
 	 * @return
 	 */
-	public String sGetDocNumberAndOldEffectiveDate(String sHeaderData) {
+	public String sGetDocNumberAndOldEffectiveDate(String sHeaderData, String sFileName, String sPart) throws Exception
+	{
+		boolean bDocupdate = false;
+		  String[] headerDataSplit = null;
 
-		if (sHeaderData.contains("\n")) {
-			logger.info("Header data contains n");
-		}
-		if (sHeaderData.contains("\r")) {
-			logger.info("Header data contains r");
-		}
-
-		String[] headerDataSplit = sHeaderData.split("\r");
-		String[] t = null, docarr = null;
-		String sDocuNumber = "";
-		for (String s : headerDataSplit) {
-			logger.info(s);
-			if (s.contains("Effectiv")) {
-				if (s.contains(":")) {
-					t = s.split(":");
-				}
-
-				sOldEffectiveDate = t[1].trim();
-				logger.info("OldEffective date:" + sOldEffectiveDate);
-
+		  if(sHeaderData.contains("\r"))
+			{
+				logger.info("Header data contains \r");
+				headerDataSplit = sHeaderData.split("\r");
 			}
-
-			if (s.contains("Document Number")) {
-				if (s.contains(":")) {
-					docarr = s.split(":");
-				}
-
-				sDocuNumber = docarr[1];
-				sDocuNumber = sDocuNumber.trim();
-				logger.info("Document Number" + sDocuNumber);
-
+		  else if (sHeaderData.contains("\n"))
+			{
+				logger.info("Header data contains \n");
+				headerDataSplit = sHeaderData.split("\n");
 			}
-
+		  else
+			  headerDataSplit = sHeaderData.split("\r");
+	
+	String[] t = null, docarr = null;
+	String sDocuNumber = "";
+	for (String s : headerDataSplit) {
+		logger.info(s);
+		if(s.contains("Effectiv")){
+			if (s.contains(":"))
+			{
+				t = s.split(":");
+			}
+			else
+			{
+				throw new Exception("Effective Date in the header of the attachment "+sFileName+"For part "+sPart+"  does not contain a ':' to distinguish");
+			}
+			sOldEffectiveDate = t[1].trim();
+			logger.info("OldEffective date:"+sOldEffectiveDate);
+	
 		}
-
-		return sDocuNumber;
+	 
+		
+String sDoctypes[] = DOCUMENT_NUMBER_TYPES.split(",");
+   for(int i=0;i<sDoctypes.length;i++)
+   {
+	   	if(s.contains(sDoctypes[i])){
+			if (s.contains(":"))
+			{
+				docarr = s.split(":");
+			sDocuNumber = docarr[1];
+			sDocuNumber = sDocuNumber.trim();
+			logger.info("Document Number:"+sDocuNumber);
+			bDocupdate = true;
+			}
+		} 
+	
+   }
+   
+   if (!bDocupdate)
+	   throw new Exception("Couldnt find Document number in the attachment"+sFileName+" For part "+sPart);
 	}
-
+	
+	return sDocuNumber;
+	}
+	
 	/**
 	 * @param mapError
 	 * @param sECONumber
