@@ -31,7 +31,7 @@ public class DashboardController {
     @RequestMapping("/home")
     public String hello(Model model, @RequestParam(value="name", required=false, defaultValue="World") String name) {
         model.addAttribute("name", name);
-        return "hello";
+        return "home";
     }
     @RequestMapping("/generateReport")
     public ModelAndView generate(HttpServletRequest req)
@@ -62,7 +62,7 @@ public class DashboardController {
 	        System.out.println("fileName = "+fileName);
 	        MediaType mediaType = MediaTypeUtils.getMediaTypeForFileName(this.servletContext, fileName);
 	        System.out.println("Media Type = "+mediaType);
-	        Path path = Paths.get("E:/Demo/" +fileName);
+	        Path path = Paths.get(fileName);
 	        byte[] data = Files.readAllBytes(path);
 	        ByteArrayResource resource = new ByteArrayResource(data);
 	 
