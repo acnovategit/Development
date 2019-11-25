@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<agile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xsi:noNamespaceSchemaLocation="../acp_control_file.xsd">
+	   
+	<copy>	
+		
+		<criteria> 
+			<include>
+					<pattern>All AWFs</pattern>
+					<pattern>All eCRs</pattern>
+					<pattern>AWFs with any Impact assessment Question =yes</pattern>
+					<pattern>Notify Document Control Group for Implementation Tasks on AWF</pattern>
+					<pattern>Notify Originator for Implementation Tasks on AWF</pattern>
+					<pattern>Notify S-Software QA \(SW V &amp; V\) for Implementation Tasks on AWF</pattern>
+					<pattern>Regulatory Review = 2 Conditional on AWF</pattern>
+					
+			</include>	
+		</criteria>
+				
+	
+			
+	</copy>
+	
+</agile>
