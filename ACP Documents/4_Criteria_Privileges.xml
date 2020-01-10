@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<agile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xsi:noNamespaceSchemaLocation="../acp_control_file.xsd">
+	   
+	<copy>	
+		
+		<criteria> 
+			<include>
+					<pattern>AWFs in Unassigned</pattern>
+					<pattern>AWFs in Pending</pattern>
+					<pattern>AWFs in Review</pattern>			
+					<pattern>AWFs in Unassigned,Pending,Review</pattern>		
+					<pattern>AWFs not in Released</pattern>
+					<pattern>Checkin on AWF</pattern>
+					<pattern>Checkout on AWF</pattern>
+					<pattern>AWFs in Implement-Review</pattern>
+					<pattern>Add attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkin attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkout attachments on Affected Items of AWF</pattern>
+					<pattern>Checkout attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Checkin attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Affected Items on AWFs in Implement-Review</pattern>
+					<pattern>\(AWF Creator and Approver\) Documents on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Items on AWF</pattern>	
+					<pattern>\(AWF Creator and Approver\) Items on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Parts on AWF</pattern>
+					<pattern>AWFs in Submit/Regulatory Affairs</pattern>
+					<pattern>Add reviewers on AWFs in Review</pattern>
+					<pattern>Add Approvers on AWFs in Approve</pattern>
+					<pattern>eCRs in Unassigned</pattern>
+					<pattern>eCRs in Pending</pattern>
+					<pattern>eCRs in Started</pattern>
+					<pattern>eCRs not in Closed</pattern>
+			</include>	
+		</criteria>
+				
+		<privilege> 
+			<include>
+					<pattern>Create eCRs</pattern>
+					<pattern>Modify eCRs at Unassigned</pattern>
+					<pattern>CS - Review AWF</pattern>
+					<pattern>CS - Release AWF</pattern>
+					<pattern>Modify AWFs at Unassigned</pattern>
+					<pattern>Modify AWFs at Pending</pattern>
+					<pattern>Modify AWFs at Review</pattern>
+					<pattern>Checkin on AWF</pattern>
+					<pattern>Checkout on AWF</pattern>
+					<pattern>Cancel Checkout on AWF</pattern>
+					<pattern>Modify AWFs at Implement-Review</pattern>
+					<pattern>\(AWF Creator and Approver\) Add attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkin attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkout attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Cancel Checkout attachments on Affected Items of AWF</pattern>
+					<pattern>Checkout attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Checkin attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Cancel Checkout attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Modify attachments on Affected Items of AWF in Implement-Review</pattern>
+					<pattern>Add reviewers on AWFs in Review</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Documents on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Items on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Parts on AWF</pattern>
+					<pattern>Modify relationships on DCOs</pattern>
+					<pattern>Modify relationships on VWFs</pattern>
+					<pattern>Modify eCRs at Pending</pattern>
+					<pattern>Modify eCRs at Started</pattern>
+					<pattern>CS - Submit/Regulatory Affairs AWF</pattern>
+					<pattern>CS - Close eCR</pattern>
+					<pattern>CS - Pending eCR</pattern>
+					<pattern>Read AWFs</pattern>
+					<pattern>Read eCRs</pattern>
+					<pattern>Approve/Reject AWFs</pattern>
+					<pattern>Acknowledge AWFs</pattern>
+					<pattern>Modify AWFs at Submit/Regulatory Affairs</pattern>
+					<pattern>\(AWF Creator and Approver\) Add attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkout attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Checkin attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Cancel Checkout attachments on Affected Items of AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Documents on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Items on AWF</pattern>
+					<pattern>\(AWF Creator and Approver\) Modify Parts on AWF</pattern>
+					<pattern>Add Approvers on AWFs in Approve</pattern>
+					<pattern>Add reviewers on AWFs in Review</pattern>
+					<pattern>Comment AWF</pattern>
+					<pattern>CS - AWF All to All</pattern>
+					<pattern>Modify InProcess AWF</pattern>
+					<pattern>\(AWF Change Analyst\) Modify eCRs</pattern>
+					<pattern>Modify last Reviewed Date on Documents</pattern>
+					<pattern>Create AWFs</pattern>
+					<pattern>CS - eCR All to All</pattern>
+			</include>		
+		</privilege>
+		
+			
+	</copy>
+	
+</agile>

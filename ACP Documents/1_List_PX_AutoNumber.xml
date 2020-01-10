@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<agile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xsi:noNamespaceSchemaLocation="../acp_control_file.xsd">
+	   
+	<copy>
+			   
+		<list>
+			<include>
+				<pattern>AWF Messages List</pattern>
+				<pattern>Change Classification</pattern>
+				<pattern>Change Type</pattern>
+				<pattern>ECR - AWF Attribute IDs Mapping List</pattern>
+				<pattern>ECR - DCO Attribute IDs Mapping List</pattern>
+				<pattern>ECR - VWF Attribute IDs Mapping List</pattern>
+				<pattern>Product Change</pattern>
+				<pattern>Selection List for 20136</pattern>
+			</include>
+		</list>
+		
+		<process_extension> 
+			<include>
+				<pattern>Generate AWF</pattern>
+				<pattern>Generate DCO</pattern>
+				<pattern>Generate VWF</pattern>
+			</include>	
+		</process_extension> 
+		
+		<auto_number>
+			<include>
+				<pattern>AWF Number</pattern>
+				<pattern>ECR Number</pattern>
+			</include>	
+		</auto_number>
+
+	</copy>	
+</agile>

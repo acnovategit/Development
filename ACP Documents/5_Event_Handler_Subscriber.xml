@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<agile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+       xsi:noNamespaceSchemaLocation="../acp_control_file.xsd">
+	   
+	<copy>
+			
+		<em_event>
+			<include>
+				<pattern>Approve for Workflow Event on AWF</pattern>
+				<pattern>Scheduled Event</pattern>
+				<pattern>Update Title Block Event on ECR</pattern>
+			</include>
+		</em_event>
+		
+		<em_event_handler>
+			<include>
+				<pattern>Update Change Classification on ECR</pattern>
+				<pattern>Auto Promote AWF</pattern>
+				<pattern>Send Notifications for AWF</pattern>
+				<pattern>Validate AWF</pattern>
+				<pattern>Set Reviewers on AWF</pattern>
+				<pattern>Set Review Dates</pattern>
+				<pattern>Update Effectivity Date</pattern>
+				<pattern>Update Obsolete</pattern>
+			</include>
+		</em_event_handler>
+
+		<em_event_subscriber>
+			<include>
+				<pattern>Send Notifications for AWF</pattern>
+				<pattern>Validate AWF at Submit/Regulatory Affairs state</pattern>
+				<pattern>Validate AWF at Review State</pattern>
+				<pattern>Update Change Classification on ECR</pattern>
+				<pattern>Auto Promote AWF</pattern>
+				<pattern>Add ECR to relationship tab of AWF</pattern>
+				<pattern>Set Reviewers on AWF</pattern>
+				<pattern>Set Review Dates</pattern>
+				<pattern>Update Effectivity</pattern>
+				<pattern>Update Effectivity For Release</pattern>
+				<pattern>Update Obsolete</pattern>
+			</include>	
+		</em_event_subscriber>
+		
+	</copy>	
+</agile>

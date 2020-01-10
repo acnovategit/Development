@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk1.8.0_77"/>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="lib" path="/CheckNewRev/lib/AgileAPI.jar"/>
+	<classpathentry kind="lib" path="/CheckNewRev/lib/apache-logging-log4j.jar"/>
+	<classpathentry kind="lib" path="/CheckNewRev/lib/log4j-1.2.17.jar"/>
+	<classpathentry kind="lib" path="/CheckNewRev/lib/log4j-api-2.11.1.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Anup/Documents/Cepheid/Deployables/DocUtilityAspose.jar"/>
+	<classpathentry kind="lib" path="C:/Users/Anup/Documents/Cepheid/Deployables/GenericUtilities.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
